@@ -9,14 +9,23 @@ Due to data privacy and licensing restrictions, the raw datasets cannot be publi
 ## 📁 Project Structure
 
 project-root/
+
 ├── ext/
+
 ├── out/
+
 ├── src/
+
 ├── renv/
+
 ├── data/ (gitignored)
+
 ├── .gitignore
+
 ├── analysis.Rmd
+
 ├── analysis.html
+
 └── README.md
 
 ### Description
@@ -24,7 +33,7 @@ project-root/
 - **`ext/`**  
   Contains external resources required for the analysis (e.g., codebooks and reference files).
 
-- **`out/`** *(not tracked)*
+- **`out/`**
   Stores outputs generated from the R Markdown file, such as tables, figures, and intermediate results.
 
 - **`src/`**  
@@ -89,7 +98,7 @@ If you have access to the original datasets:
 1. Place the data files in the data/ directory.
 2. Make sure file names and formats match those expected by the scripts.
 3. Open analysis.Rmd.
-4. Knit the document or run: rmarkdown::render("analysis.Rmd")
+4. Knit the document or run: `rmarkdown::render("analysis.Rmd")`
 5. Outputs will be generated in the out/ directory.
 
 ## 🔁 Reproducibility
