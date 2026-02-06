@@ -89,7 +89,9 @@ To set up the project locally:
 
 This will install all required packages in a local project library.
 
-## ▶️ Usage
+---
+
+## ▶️ Usage
 
 If you only want to explore the results, open: `analysis.html` in your web browser. This file contains the rendered output of the full analysis.
 
@@ -101,15 +103,21 @@ If you have access to the original datasets:
 4. Knit the document or run: `rmarkdown::render("analysis.Rmd")`
 5. Outputs will be generated in the out/ directory.
 
-## 🔁 Reproducibility
+---
+
+## 🔁 Reproducibility
 
 This project uses renv to ensure reproducibility. Package versions are recorded in renv.lock. Running renv::restore() recreates the original software environment. All data processing and analysis steps are documented in analysis.Rmd and src/.
+
+---
 
 ## 📊 Data Availability
 
 The datasets used in this project are not publicly available due to privacy and licensing constraints. Researchers interested in reproducing the analysis should contact the data provider or the project maintainer to request access.
 
-🤝 Contributing
+---
+
+## 🤝 Contributing
 
 Contributions are welcome. If you would like to contribute:
 
@@ -120,10 +128,14 @@ Contributions are welcome. If you would like to contribute:
 
 Please ensure that all code is documented and reproducible.
 
-## 📄 License
+---
+
+## 📄 License
 
 CC0 1.0 Universal
 
-## 📬 Contact
+---
+
+## 📬 Contact
 
 For questions or suggestions, please open an issue on GitHub or contact the repository maintainer.
