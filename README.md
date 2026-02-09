@@ -34,7 +34,7 @@ project-root/
   Contains external resources required for the analysis (e.g., codebooks and reference files).
 
 - **`out/`**
-  Stores outputs generated from the R Markdown file, such as tables, figures, and intermediate results.
+  Stores outputs generated from the R Markdown file, such as tables, figures, and intermediate results (except large models).
 
 - **`src/`**  
   Includes R scripts for data cleaning, preprocessing, and reusable functions.
@@ -43,8 +43,7 @@ project-root/
   Contains the `renv` environment configuration to ensure reproducibility of package dependencies.
 
 - **`data/`** *(not tracked)*  
-  Holds the main datasets (e.g., `.rds` files).  
-  This folder is excluded from version control due to data sharing restrictions.
+  Holds the main datasets. This folder is excluded from version control due to data sharing restrictions.
 
 - **`.gitignore`**  
   Specifies files and directories excluded from Git version control.
