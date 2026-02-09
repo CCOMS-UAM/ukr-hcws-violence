@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+/data
+/out/bayesian_models
+/out/bayesian_models_agg
+/out/bayesian_models_sens
+/out/glm_dose
+/out/glm_models
+/out/svy_models
