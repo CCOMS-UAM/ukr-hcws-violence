@@ -312,8 +312,11 @@ exposures <- c("work_21_dic", "work_22_dic",
                "work_32_dic", "work_33_dic",
                "wb_wami_1_dic", "wb_wami_2_dic")
 
+
+# Remove observations
 ds_ua <- 
   ds_ua |> 
+  filter(scdm_1 != "Less than 20 years old") |> 
   mutate(scdm_1 = fct_drop(scdm_1),
          loc_3 = fct_drop(loc_3)) |> 
   mutate(
@@ -402,13 +405,6 @@ exposure_map <- list(
 )
 ```
 
-```{r rm obs}
-ds_ua <- 
-  
-  ds_ua |> 
-  drop_na(scdm_2_rec) |> 
-  filter(scdm_1_rec != "Less than 20 years old")
-```
 
 # Unweighted tables
 
@@ -2251,7 +2247,7 @@ all_runs_list <- pmap(list(
 
   
 
-  res_str <- run_adj_glm_strat(
+  res_str <- run_glm_adj(
     data = ds_ua, 
     outcome_var = outcome, 
     exposure_var = exposure,
