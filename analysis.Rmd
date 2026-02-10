@@ -595,6 +595,944 @@ out_reg
 saveRDS(out_reg, "out/dataframes/outcome_regions.rds")
 ```
 
+# Generalized Linear Models with Multilevel variables
+
+## Run models
+
+```{r glm-run-models}
+# define covariates
+covariate_map <- list(
+  "peer" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2", "work_5_rec",
+             "work_3_rec", "work_1"),
+  
+  "viol" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2", "work_5_rec"),
+  
+  "har_bul" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2", "work_1",
+                "work_3_rec", "work_5_rec"),
+  
+  "meanpur" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2",
+                "work_5_rec", "work_3_rec", "work_1", "scdm_4_dic",
+                "scdm_5_dic"),
+  
+  "structure" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2")
+)
+
+analysis_plan <- tribble(
+  ~Exposure,     ~Covar_Key,
+  "work_21_dic", "peer",
+  "work_22_dic", "peer",
+  "work_31_dic", "viol",
+  "work_32_dic", "viol",
+  "work_30_dic", "har_bul",
+  "work_33_dic", "har_bul",
+  "wb_wami_1_dic", "meanpur",
+  "wb_wami_2_dic", "meanpur"
+)
+
+outcomes_map <- tribble(
+  ~Outcome,    ~Family,
+  "phq_co",    "poisson",
+  "gad_co",    "poisson",
+  "suic_idea",    "poisson",
+)
+
+# Define stratification of models
+profs <- c("Doctor", "Nurse")
+
+# Generate exposure-outcome binomials
+tasks <- expand_grid(
+  out_row = outcomes_map,
+  exp_row = analysis_plan,
+  profession = profs
+) |> 
+  tidyr::unpack(cols = c(out_row, exp_row))
+
+
+all_runs_list <- pmap(list(
+  tasks$Outcome,
+  tasks$Family,
+  tasks$Exposure,
+  tasks$Covar_Key,
+  tasks$profession
+), function(outcome, family, exposure, cov_key, prof) {
+  
+  message(paste("Processing:", outcome, "x", exposure, "in", prof))
+  
+  res_crude <- run_crude_glm(
+    data = ds_ua, 
+    outcome_var = outcome,
+    exposure_var = exposure, 
+    profession = prof,
+    cluster_var = "loc_3", 
+    family_type = family,
+    )
+
+  
+
+  res_str <- run_glm_adj(
+    data = ds_ua, 
+    outcome_var = outcome, 
+    exposure_var = exposure,
+    confounder_list = covariate_map[["structure"]], 
+    profession = prof,
+    cluster_var = "loc_3", 
+    family_type = family, 
+    model_label = "Partially adjusted"
+    )
+  
+  #look up for specific covariate list
+  specific_covars <- covariate_map[[cov_key]]
+  
+  res_adj <- run_glm_adj(
+    data = ds_ua, 
+    outcome_var = outcome, 
+    exposure_var = exposure,
+    confounder_list = specific_covars, 
+    profession = prof,
+    cluster_var = "loc_3", 
+    family_type = family, 
+    model_label = "Fully adjusted"
+    )
+  
+  
+  # Combine internally
+  row_multilevel <- 
+    
+    bind_rows(
+      res_crude$multilevel,
+      res_str$multilevel,
+      res_adj$multilevel
+    )
+  
+  row_robust <- 
+    
+    bind_rows(
+      res_crude$robust,
+      res_str$robust,
+      res_adj$robust
+    )
+  
+  # return as clean pair
+  return(list(
+    multilevel = row_multilevel,
+    robust     = row_robust
+  ))
+})
+
+
+# Unzip and combine
+
+glm_multilevel_df <- map_dfr(all_runs_list, "multilevel")
+
+glm_robust_df <- map_dfr(all_runs_list, "robust")
+
+
+# Save
+
+saveRDS(glm_multilevel_df, "out/dataframes/glm_multilevel_df.rds")
+writexl::write_xlsx(glm_multilevel_df,
+                    "out/dataframes/glm_multilevel_df.xlsx")
+
+
+saveRDS(glm_robust_df, "out/dataframes/glm_robust_df.rds")
+writexl::write_xlsx(glm_robust_df, "out/dataframes/glm_robust_df.xlsx")
+```
+
+## GLM results
+
+```{r glm-results}
+# SE Ratios
+glm_se_ratios <-
+  
+  glm_multilevel_df |>
+  select(Outcome, Exposure, Profession, Adjustment, beta, PR, SE) |> 
+  rename(`PR (ML)` = PR,
+         `SE (ML)` = SE) |> 
+  left_join(glm_robust_df |> 
+              select(Outcome, Exposure, Profession, Adjustment, SE),
+            by = c("Outcome", "Exposure", "Profession", "Adjustment")) |> 
+  rename(`SE (Robust)` = SE) |> 
+  mutate(`SE Ratio` = `SE (Robust)` / `SE (ML)`) |> 
+  mutate(
+    Exposure = case_when(
+      Exposure == "work_21_dic" ~ "Colleague support",
+      Exposure == "work_22_dic" ~ "Support from superiors",
+      Exposure == "work_31_dic" ~ "Violent threats",
+      Exposure == "work_32_dic" ~ "Physical violence",
+      Exposure == "work_30_dic" ~ "Sexual Harassment",
+      Exposure == "work_33_dic" ~ "Bullying",
+      Exposure == "wb_wami_1_dic" ~ "Meaning in work",
+      Exposure == "wb_wami_2_dic" ~ "Purpose in work",
+      TRUE ~ Exposure),
+    Outcome = case_when(
+      Outcome == "phq_co" ~ "Depression",
+      Outcome == "gad_co" ~ "Anxiety",
+      Outcome == "suic_idea" ~ "Suicide thoughts",
+      TRUE ~ Outcome
+    )
+  )
+
+glm_se_ratios
+
+
+# Save
+
+saveRDS(glm_se_ratios, "out/dataframes/glm_se_ratios_df.rds")
+writexl::write_xlsx(glm_se_ratios, "out/dataframes/glm_se_ratios_df.xlsx")
+
+
+# Results with ML estimator + SE robust
+
+glm_results <-
+  
+  glm_multilevel_df |> 
+  select(-c(model, N_Analysis, Risk_Unexp, Risk_Exp)) |> 
+  mutate(
+    Exposure = case_when(
+      Exposure == "work_21_dic" ~ "Colleague support",
+      Exposure == "work_22_dic" ~ "Support from superiors",
+      Exposure == "work_31_dic" ~ "Violent threats",
+      Exposure == "work_32_dic" ~ "Physical violence",
+      Exposure == "work_30_dic" ~ "Sexual Harassment",
+      Exposure == "work_33_dic" ~ "Bullying",
+      Exposure == "wb_wami_1_dic" ~ "Meaning in work",
+      Exposure == "wb_wami_2_dic" ~ "Purpose in work",
+      TRUE ~ Exposure),
+    Outcome = case_when(
+      Outcome == "phq_co" ~ "Depression",
+      Outcome == "gad_co" ~ "Anxiety",
+      Outcome == "suic_idea" ~ "Suicide thoughts",
+      TRUE ~ Outcome
+    )
+  ) |> 
+  mutate(
+     Est_CI = sprintf("%.2f (%.2f, %.2f)", PR, CI_l, CI_u)
+  )
+
+glm_results
+
+saveRDS(glm_results, "out/dataframes/glm_results_df.rds")
+writexl::write_xlsx(glm_results, "out/dataframes/glm_results_df.xlsx")
+  
+
+# Load data
+
+glm_results <- readRDS("out/dataframes/glm_results_df.rds")
+
+# Table of results
+tbl_binary_glm <- make_stratified_table(
+  glm_results,
+  "**GLM Multilevel models**",
+  "Prevalence Ratio (95% CI). All models include Region as a second-order covariate."
+)
+
+tbl_binary_glm
+
+
+gtsave(tbl_binary_glm, "out/tables/glm_res_tbl.docx")
+
+
+ls() |> 
+  str_subset("^glm_") |> 
+  rm(list = _)
+
+rm(glm_se_ratios, make_stratified_table, run_crude_glm, run_glm_adj)
+```
+
+# GLM Dose-Response models
+
+```{r glm-sens-dose-resp}
+
+analysis_plan_dose <- tribble(
+  ~Exposure,     ~Covar_Key,
+  "work_21", "peer",
+  "work_22", "peer",
+  "work_31", "viol",
+  "work_32", "viol",
+  "work_30", "har_bul",
+  "work_33", "har_bul",
+  "wb_wami_1", "meanpur",
+  "wb_wami_2", "meanpur",
+)
+
+outcomes_map_dose <- tribble(
+  ~Outcome,    ~Family,
+  "phq_sc",    "gaussian",
+  "gad_sc",    "gaussian",
+  "mh_phq_9",  "gaussian",
+)
+
+
+# Define exposure-outcome combinations
+tasks_dose <- expand_grid(
+  out_row = outcomes_map_dose,
+  exp_row = analysis_plan_dose,
+) |> 
+  tidyr::unpack(cols = c(out_row, exp_row))
+
+
+dose_all <- pmap_dfr(list(
+  tasks_dose$Outcome,
+  tasks_dose$Family,
+  tasks_dose$Exposure,
+  tasks_dose$Covar_Key
+  ), function(outcome, family, exposure, cov_key) {
+  
+  message(paste("Processing:", outcome, "&", exposure))
+
+  
+  res_adj <- run_glm_dose_emm(
+    data = ds_ua,
+    outcome_var = outcome,
+    exposure_var = exposure,
+    confounder_list = covariate_map[[cov_key]],
+    model_label = "Fully adjusted"
+  ) 
+  
+  print(res_adj)
+})
+
+
+
+dose_all <- 
+  dose_all |> 
+  mutate(
+    Est_CI = sprintf("%.2f (%.2f, %.2f)", estimate, conf.low, conf.high),
+    Exposure = case_when(
+      Exposure == "work_21" ~ "Colleague support",
+      Exposure == "work_22" ~ "Support from superiors",
+      Exposure == "work_31" ~ "Violent threats",
+      Exposure == "work_32" ~ "Physical violence",
+      Exposure == "work_30" ~ "Sexual Harassment",
+      Exposure == "work_33" ~ "Bullying",
+      Exposure == "wb_wami_1" ~ "Meaning in work",
+      Exposure == "wb_wami_2" ~ "Purpose in work",
+      TRUE ~ Exposure),
+    Outcome = case_when(
+      Outcome == "phq_sc" ~ "PHQ-9 score",
+      Outcome == "gad_sc" ~ "GAD-7 score",
+      Outcome == "mh_phq_9" ~ "PHQ-9 suicide item score",
+      TRUE ~ Outcome
+    ),
+    Category = if_else(
+      Exposure %in% c("Violent threats", "Physical violence",
+                      "Sexual Harassment", "Bullying"),
+      "Risk factor",
+      "Protective factor")
+    )
+
+dose_all
+
+saveRDS(dose_all, "out/dataframes/dose_all.rds")
+writexl::write_xlsx(dose_all, "out/dataframes/dose_all.xlsx")
+```
+
+```{r psw-dose-results}
+dose_resp_df <- 
+  readRDS("out/dataframes/dose_all.rds") 
+
+# Custom palette: Purple -> Teal -> Green -> Lime
+viridis_lime_palette <- c(
+  "#440154", # Dark Purple
+  "lightblue", # Blue/Teal
+  "#35B779", # Medium Green
+  "#B4DE2C"  # Lime Green
+)
+
+# Assign these colors to labels
+custom_colors <- c(
+  # Risk Factors 
+  "Bullying"                = viridis_lime_palette[1],
+  "Sexual Harassment"       = viridis_lime_palette[2],
+  "Violent threats"         = viridis_lime_palette[3],
+  "Physical violence"       = viridis_lime_palette[4],
+  
+  # Protective Factors
+  "Colleague support"       = viridis_lime_palette[1],
+  "Support from superiors"  = viridis_lime_palette[2],
+  "Meaning in work"         = viridis_lime_palette[3],
+  "Purpose in work"         = viridis_lime_palette[4]
+)
+
+
+dose_plots <-
+  
+  dose_resp_df |> 
+  group_by(Outcome, Exposure) |> 
+  mutate(Level_Index = row_number()) |> 
+  ungroup() |> 
+  mutate(Outcome = factor(Outcome, 
+                          levels = c("PHQ-9 score",
+                                     "GAD-7 score",
+                                     "PHQ-9 suicide item score")),
+         Exposure = factor(Exposure, levels = exposure_order)) |> 
+  arrange(Outcome) |> 
+  ggplot(aes(x = Level_Index, 
+             y = estimate, 
+             group = Exposure,
+             colour = Exposure)) +
+  geom_line(linewidth = 0.5,
+            position = position_dodge(width = 0.2)) + 
+  geom_point(size = 2,
+             position = position_dodge(width = 0.2)) + 
+  facet_grid(rows = vars(Outcome),
+             cols = vars(Category),
+             scales = "free",
+             switch = "y") + 
+  scale_colour_manual(values = custom_colors) +
+  scale_x_continuous(breaks = 1:5, minor_breaks = NULL) +
+  labs(
+    x = "Level of exposure",
+    y = "Score change estimate",
+    colour ="Exposure"
+  ) + 
+  facetted_pos_scales(
+    y = list(
+      Outcome == "PHQ-9 score" ~ scale_y_continuous(
+        limits = c(0, 27),
+        breaks = c(0, 5, 10, 15, 20, 25)),
+      Outcome == "GAD-7 score" ~ scale_y_continuous(
+        limits = c(0, 21),
+        breaks = c(0, 5, 10, 15, 20)),
+      Outcome == 
+        "PHQ-9 suicide item score" ~ scale_y_continuous(
+        limits = c(0, 4),
+        breaks = c(0, 1, 2, 3, 4))
+    )
+  ) + 
+  theme_minimal() +
+  theme(
+    strip.placement = "outside",  
+    strip.text.y.left = element_text(angle = 90, face = "bold", size = 10), 
+    strip.text.x = element_text(face = "bold", size = 10),
+    axis.text.x = element_text(size = 10),
+    axis.title.x = element_text(size = 10),
+    axis.text.y = element_text(size = 10),
+    panel.border = element_rect(color = "black", fill = NA),  
+    axis.title.y = element_blank(), 
+    legend.position = "right",
+    legend.key.width = unit(1.5, "cm")
+  )
+
+dose_plots
+
+ggsave(filename = "dose_resp_plots.pdf",
+       plot = dose_plots,
+       path = "out/plots/",
+       width = 170,
+       height = 170,
+       units = "mm",
+       dpi = 320,
+       scale = 1.5
+       )
+
+ls() |> 
+  str_subset("^glm_") |> 
+  rm(list = _)
+
+
+```
+
+# Survey approach
+
+## Define design
+
+```{r survey design}
+ds_ua <- 
+  ds_ua |> 
+  filter(!is.na(scdm_2_rec))
+
+# As we do not know the absolute numbers but only distributions, we use
+# raking for adjusting our sample to the population
+# First, define population totals (marginal targets)
+pop_profession <- 
+  data.frame(
+    work_2 = c("Doctor", "Nurse"),
+    Freq = c(155725, 243664)
+    )
+
+# Calculate margins for gender but with absolute totals
+# Female: (155,725 * 0.65) + (243,664 * 0.98) = 339,912
+# Male: (155,725 * 0.35) + (243,664 * 0.02) = 59,477
+
+pop_gender <- 
+  data.frame(
+    scdm_2_rec = c("Female", "Male"),
+    Freq = c(339912, 59477)
+    )
+
+
+
+svy_ua <- 
+  svydesign(
+    data = ds_ua,
+    ids = ~loc_3,  # participants may be more similar within regions
+    weights = NULL
+    )
+
+# raking is a good practice when applying convenience sampling
+svy_ua_w <- rake(
+  design = svy_ua,
+  sample.margins = list(~work_2, ~scdm_2_rec),
+  population.margins = list(pop_profession, pop_gender)
+)
+
+
+
+rm(pop_profession, pop_gender)
+```
+
+## Tables
+
+### Sociodemographic
+
+```{r scdm-tbl-w}
+# tbl_svysummary has issues with stratifying, we can only gen information
+# on separate columns
+
+# define vars
+scdm_vars <- c("scdm_1_rec", "scdm_4_dic", "scdm_5_dic", "work_1", 
+               "work_3_rec", "work_5_rec", "conflict")
+
+
+# We do this first so we can use them in the labels later
+n_counts <- 
+  ds_ua |> 
+  count(work_2, scdm_2_rec)
+
+n_total_counts <- 
+  ds_ua |> 
+  count(work_2) # For the Overall headers
+
+get_n_style <- 
+  function(w, g = NULL) {
+    
+    if(is.null(g)) {
+      
+      val <- 
+        n_total_counts |> 
+        filter(work_2 == w) |> 
+        pull(n)
+      
+      } else {
+        
+        val <- 
+          n_counts |> 
+          filter(work_2 == w, 
+                 scdm_2_rec == g) |> 
+          pull(n)
+  }
+  style_number(val)
+}
+
+# Doctors
+n_doc_all <- get_n_style("Doctor")
+n_doc_m   <- get_n_style("Doctor", "Male")
+n_doc_f   <- get_n_style("Doctor", "Female")
+
+# Nurses
+n_nur_all <- get_n_style("Nurse")
+n_nur_m   <- get_n_style("Nurse", "Male")
+n_nur_f   <- get_n_style("Nurse", "Female")
+
+
+# Summaries (With add_overall) 
+
+doc_n <- 
+  ds_ua |> 
+  filter(work_2 == "Doctor") |>
+  tbl_summary(
+    by = scdm_2_rec,
+    include = all_of(scdm_vars),
+    statistic = list(all_categorical() ~ "{n}"),
+    missing = "no"
+  ) |>
+  add_overall() |> # Adds stat_0
+  modify_header(all_stat_cols() ~ "**{level}** (n)") 
+
+doc_p <- 
+  subset(svy_ua_w, work_2 == "Doctor") |>
+  tbl_svysummary(
+    by = scdm_2_rec,
+    include = all_of(scdm_vars),
+    statistic = list(all_categorical() ~ "({p}%)"),
+    missing = "no"
+  ) |>
+  add_overall() |> # Adds stat_0
+  modify_header(all_stat_cols() ~ "**{level}** (%)")
+
+doc_merged <- 
+  tbl_merge(list(doc_n, doc_p), 
+            tab_spanner = FALSE)
+
+
+nur_n <- 
+  ds_ua |> 
+  filter(work_2 == "Nurse") |>
+  tbl_summary(
+    by = scdm_2_rec,
+    include = all_of(scdm_vars),
+    statistic = list(all_categorical() ~ "{n}"),
+    missing = "no"
+  ) |>
+  add_overall() |>
+  modify_header(all_stat_cols() ~ "**{level}** (n)")
+
+nur_p <- 
+  subset(svy_ua_w, work_2 == "Nurse") |>
+  tbl_svysummary(
+    by = scdm_2_rec,
+    include = all_of(scdm_vars),
+    statistic = list(all_categorical() ~ "({p}%)"),
+    missing = "no"
+  ) |>
+  add_overall() |>
+  modify_header(all_stat_cols() ~ "**{level}** (%)")
+
+nur_merged <- 
+  tbl_merge(list(nur_n, nur_p), 
+            tab_spanner = FALSE)
+
+
+# Merge and GT
+
+scdm_tbl_w <- 
+  
+  tbl_merge(
+    list(doc_merged, nur_merged),
+    tab_spanner = c("**Doctor**", "**Nurse**")
+  ) |>  
+  modify_footnote(everything() ~ NA) |> 
+  as_gt() 
+
+# Column merging
+
+# LOGIC:
+# stat_0 = Overall
+# stat_1 = Female (Alphabetical F < M)
+# stat_2 = Male
+#
+# Suffixes added by tbl_merge:
+# _1 = Counts (from the first merge n+p)
+# _2 = Props  (from the first merge n+p)
+# _1 (outer) = Doctors
+# _2 (outer) = Nurses
+
+scdm_tbl_w <- 
+  scdm_tbl_w |>
+
+  cols_merge(columns = c("stat_0_1_1", "stat_0_2_1")) |> 
+  cols_merge(columns = c("stat_1_1_1", "stat_1_2_1")) |> 
+  cols_merge(columns = c("stat_2_1_1", "stat_2_2_1")) |> 
+  cols_merge(columns = c("stat_0_1_2", "stat_0_2_2")) |> 
+  cols_merge(columns = c("stat_1_1_2", "stat_1_2_2")) |> 
+  cols_merge(columns = c("stat_2_1_2", "stat_2_2_2")) |> 
+  cols_label(
+    stat_0_1_1 = md(glue::glue("**Overall**<br>N = {n_doc_all}")), 
+    stat_1_1_1 = md(glue::glue("**Female**<br>N = {n_doc_f}")), 
+    stat_2_1_1 = md(glue::glue("**Male**<br>N = {n_doc_m}")),
+    stat_0_1_2 = md(glue::glue("**Overall**<br>N = {n_nur_all}")),
+    stat_1_1_2 = md(glue::glue("**Female**<br>N = {n_nur_f}")),
+    stat_2_1_2 = md(glue::glue("**Male**<br>N = {n_nur_m}"))
+  ) |>
+  tab_footnote(
+    footnote = "n (weighted %)",
+    locations = cells_column_labels(
+      columns = c(stat_0_1_1, stat_1_1_1, stat_2_1_1, 
+                  stat_0_1_2, stat_1_1_2, stat_2_1_2)
+    )
+  )
+
+# View
+scdm_tbl_w
+
+# Save
+gtsave(scdm_tbl_w, "out/tables/scdm_tbl_w.docx")
+
+rm(n_counts, n_m_doc, n_m_nur, n_f_doc, n_f_nur, nur_n, nur_p,
+   doc_merged, doc_n, doc_p, nur_merged)
+```
+
+```{r mh-by-scdm-w}
+# Run functions 
+tbl_depression_w <- 
+  generate_outcome_table_w_out("phq_co", "Probable Depression")
+gtsave(tbl_depression_w, "out/tables/dep_by_scdm_w.docx")
+
+tbl_anxiety_w <- 
+  generate_outcome_table_w_out("gad_co", "Probable Anxiety")
+gtsave(tbl_anxiety_w, "out/tables/anx_by_scdm_w.docx")
+
+tbl_suicide_w <- 
+  generate_outcome_table_w_out("suic_idea", "Passive Suicide Thoughts")
+gtsave(tbl_suicide_w, "out/tables/suic_by_scdm_w.docx")
+
+
+tbl_depression_w
+tbl_anxiety_w
+tbl_suicide_w
+```
+
+```{r exp-by-scdm-w}
+# Generate tables with function
+tbl_harassment_w <- generate_exposure_table_w_exp("work_30_dic", "Sexual harassment")
+gtsave(tbl_harassment_w, "out/tables/harass_by_scdm_w.docx")
+
+tbl_threats_w <- generate_exposure_table_w_exp("work_31_dic", "Violent threats")
+gtsave(tbl_threats_w, "out/tables/threats_by_scdm_w.docx")
+
+tbl_violence_w <- generate_exposure_table_w_exp("work_32_dic", "Physical violence")
+gtsave(tbl_violence_w, "out/tables/violence_by_scdm_w.docx")
+
+tbl_bullying_w <- generate_exposure_table_w_exp("work_33_dic", "Bullying")
+gtsave(tbl_bullying_w, "out/tables/bullying_by_scdm_w.docx")
+
+tbl_colleagues_w <- generate_exposure_table_w_exp("work_21_dic", "Colleague support")
+gtsave(tbl_colleagues_w, "out/tables/col_supp_by_scdm_w.docx")
+
+tbl_superiors_w <- generate_exposure_table_w_exp("work_22_dic", 
+                                         "Support from superiors")
+gtsave(tbl_superiors_w, "out/tables/sup_supp_by_scdm_w.docx")
+
+tbl_meaning_w <- generate_exposure_table_w_exp("wb_wami_1_dic", "Meaning in work")
+gtsave(tbl_meaning_w, "out/tables/meaning_by_scdm_w.docx")
+
+tbl_purpose_w <- generate_exposure_table_w_exp("wb_wami_2_dic", "Purpose in work")
+gtsave(tbl_purpose_w, "out/tables/purpose_by_scdm_w.docx")
+
+
+
+# Visualize
+
+tbl_harassment_w
+tbl_threats_w
+tbl_violence_w
+tbl_bullying_w
+tbl_colleagues_w
+tbl_superiors_w
+tbl_meaning_w
+tbl_purpose_w
+
+
+```
+
+### Exposures
+
+```{r exp-overall-w}
+# Generate table
+table_all_exposures_w <- gen_w_exp_tbl(exposures)
+
+gtsave(table_all_exposures_w, "out/tables/all_exp_tbl_w.docx")
+
+table_all_exposures_w
+
+```
+
+### Outcomes
+
+```{r outcomes-overall-w}
+# Generate table
+table_all_outcomes_w <- gen_w_out_tbl(outcomes)
+
+gtsave(table_all_outcomes_w, "out/tables/all_out_tbl_w.docx")
+
+table_all_outcomes_w
+```
+
+## Svy Models
+
+```{r function to map every model}
+# generate the grid for all possible combinations
+tasks_grid <- expand_grid(
+  outcome = outcomes,
+  exposure = names(exposure_map),
+  profession = c("Doctor", "Nurse")
+)
+
+# run function 
+pwalk(
+  list(tasks_grid$outcome, 
+       tasks_grid$exposure, 
+       tasks_grid$profession),
+  function(out, exp, prof) {
+    message(glue("Running: {out} vs {exp} ({prof})..."))
+    run_svy_models(out, exp, prof, svy_ua_w)
+  }
+)
+
+```
+
+## Survey results table
+
+```{r svy-tbl-res}
+# find svy objects
+svy_model_names <- ls(pattern = "^svy_", envir = .GlobalEnv)
+
+# Extraction
+survey_results_df <- 
+  map_dfr(svy_model_names, function(obj_name) {
+  
+  # Load the model object
+  model <- get(obj_name, envir = .GlobalEnv)
+  
+  # decode filename
+  parts <- str_split(obj_name, "_")[[1]]
+  
+  out_code   <- parts[2]
+  exp_code   <- parts[3]
+  prof_code  <- parts[4]
+  type_code  <- parts[5]
+  
+  # Decode Labels for the Table
+  outcome_label <- case_when(
+    out_code == "dep"  ~ "Depression",
+    out_code == "anx"  ~ "Anxiety",
+    out_code == "suic" ~ "Suicide thoughts"
+  )
+  
+  exposure_label <- case_when(
+    exp_code == "cols"    ~ "Colleague support",
+    exp_code == "sup"     ~ "Support from superiors",
+    exp_code == "har"     ~ "Sexual Harassment",
+    exp_code == "bul"     ~ "Bullying",
+    exp_code == "threats" ~ "Violent threats",
+    exp_code == "viol"    ~ "Physical violence",
+    exp_code == "mean"    ~ "Meaning in work",
+    exp_code == "purp"    ~ "Purpose in work"
+  )
+  
+  profession_label <- ifelse(prof_code == "doc", "Doctor", "Nurse")
+  
+  model_label <- case_when(
+    type_code == "cr"  ~ "Crude",
+    type_code == "str" ~ "Partially",
+    type_code == "adj" ~ "Fully Adj."
+  )
+  
+ 
+  term_lookup <- case_when(
+    exp_code == "cols"    ~ "work_21_dicYes",
+    exp_code == "sup"     ~ "work_22_dicYes",
+    exp_code == "har"     ~ "work_30_dicYes",
+    exp_code == "bul"     ~ "work_33_dicYes",
+    exp_code == "threats" ~ "work_31_dicYes",
+    exp_code == "viol"    ~ "work_32_dicYes",
+    exp_code == "mean"    ~ "wb_wami_1_dicYes",
+    exp_code == "purp"    ~ "wb_wami_2_dicYes"
+  )
+  
+  # extract stats
+  res <- tryCatch({
+    
+    # Check family
+    is_logistic <- model$family$family %in% c("quasipoisson", "binomial")
+    
+    # Try to tidy
+    tidy(model, conf.int = TRUE, exponentiate = is_logistic)
+    
+  }, error = function(e) {
+    # If it fails, print the culprit and return NULL
+    warning(paste("FAILED model:", obj_name, "-", e$message))
+    return(NULL)
+  })
+  
+  if (is.null(res)) return(NULL)
+  
+  # exposure term
+  target_row <- 
+    res |> 
+    filter(term == term_lookup)
+  
+  if(nrow(target_row) > 0) {
+    # If multiple rows match (rare), take the first one
+    est  <- target_row$estimate[1]
+    low  <- target_row$conf.low[1]
+    high <- target_row$conf.high[1]
+    
+    
+    # calculate absolute risks/means
+    dat <- model$model
+    
+    exp_var_name <- str_remove(term_lookup, "Yes$")
+    resp_var_name <- names(dat)[1]
+    
+    x_vec <- as.character(dat[[exp_var_name]])
+    y_raw <- as.numeric(dat[[resp_var_name]])
+    
+    if (is.factor(y_raw)) {
+       # Ensure it is 0 and 1
+       y_vec <- as.numeric(as.character(y_raw)) 
+    } else {
+       y_vec <- as.numeric(y_raw)
+    }
+    
+    if (is_logistic) {
+      # Normalize 1/2 to 0/1 if necessary
+      if(max(y_vec, na.rm = TRUE) > 1) y_vec <- y_vec - 1
+      
+      # Calculate %
+      risk_unexp <- mean(y_vec[x_vec == "No"], na.rm = TRUE) * 100
+      risk_exp   <- mean(y_vec[x_vec == "Yes"], na.rm = TRUE) * 100
+      
+      risk_unexp_str <- sprintf("%.1f%%", risk_unexp)
+      risk_exp_str   <- sprintf("%.1f%%", risk_exp)
+      
+      } else {
+        
+        # Calculate Mean
+        mean_unexp <- mean(y_vec[x_vec == "No"], na.rm = TRUE)
+        mean_exp   <- mean(y_vec[x_vec == "Yes"], na.rm = TRUE)
+        
+        risk_unexp_str <- sprintf("%.2f", mean_unexp)
+        risk_exp_str   <- sprintf("%.2f", mean_exp)
+        }
+    
+    tibble(
+      Outcome = outcome_label,
+      Exposure = exposure_label,
+      Profession = profession_label,
+      Model = model_label,
+      Type = ifelse(is_logistic, 
+                    "PR", 
+                    "Beta"),
+      Est_CI = sprintf("%.2f (%.2f, %.2f)", est, low, high),
+      Risk_Unexposed = risk_unexp_str,
+      Risk_Exposed = risk_exp_str
+    )
+    
+  } else {
+    return(NULL)
+  }
+})
+
+
+survey_results_df
+
+# Save
+saveRDS(survey_results_df, "out/dataframes/svy_results_df.rds")
+writexl::write_xlsx(survey_results_df, "out/dataframes/svy_results_df.xlsx")
+
+# generate table
+tbl_svy_res <- build_svy_gt(
+  survey_results_df, 
+  metric_type = "PR", 
+  title_text = "**Survey Logistic Models (PR)**", 
+  footnote_text = "Weighted Prevalence Ratios (95% CI)"
+)
+
+
+gtsave(tbl_svy_res, "out/tables/svy_res_tbl.docx")
+
+
+tbl_svy_res
+
+ls() |> 
+  str_subset("^svy_") |> 
+  rm(list = _)
+
+rm(build_svy_gt, run_svy_models)
+```
+
 # Bayesian Approach
 
 ## Define priors
@@ -1671,944 +2609,6 @@ tbl_sens_dx
 
 
 gtsave(tbl_sens_dx, "out/tables/diagnostics_tbl_sens_bayes.docx")
-```
-
-# Survey approach
-
-## Define design
-
-```{r survey design}
-ds_ua <- 
-  ds_ua |> 
-  filter(!is.na(scdm_2_rec))
-
-# As we do not know the absolute numbers but only distributions, we use
-# raking for adjusting our sample to the population
-# First, define population totals (marginal targets)
-pop_profession <- 
-  data.frame(
-    work_2 = c("Doctor", "Nurse"),
-    Freq = c(155725, 243664)
-    )
-
-# Calculate margins for gender but with absolute totals
-# Female: (155,725 * 0.65) + (243,664 * 0.98) = 339,912
-# Male: (155,725 * 0.35) + (243,664 * 0.02) = 59,477
-
-pop_gender <- 
-  data.frame(
-    scdm_2_rec = c("Female", "Male"),
-    Freq = c(339912, 59477)
-    )
-
-
-
-svy_ua <- 
-  svydesign(
-    data = ds_ua,
-    ids = ~loc_3,  # participants may be more similar within regions
-    weights = NULL
-    )
-
-# raking is a good practice when applying convenience sampling
-svy_ua_w <- rake(
-  design = svy_ua,
-  sample.margins = list(~work_2, ~scdm_2_rec),
-  population.margins = list(pop_profession, pop_gender)
-)
-
-
-
-rm(pop_profession, pop_gender)
-```
-
-## Tables
-
-### Sociodemographic
-
-```{r scdm-tbl-w}
-# tbl_svysummary has issues with stratifying, we can only gen information
-# on separate columns
-
-# define vars
-scdm_vars <- c("scdm_1_rec", "scdm_4_dic", "scdm_5_dic", "work_1", 
-               "work_3_rec", "work_5_rec", "conflict")
-
-
-# We do this first so we can use them in the labels later
-n_counts <- 
-  ds_ua |> 
-  count(work_2, scdm_2_rec)
-
-n_total_counts <- 
-  ds_ua |> 
-  count(work_2) # For the Overall headers
-
-get_n_style <- 
-  function(w, g = NULL) {
-    
-    if(is.null(g)) {
-      
-      val <- 
-        n_total_counts |> 
-        filter(work_2 == w) |> 
-        pull(n)
-      
-      } else {
-        
-        val <- 
-          n_counts |> 
-          filter(work_2 == w, 
-                 scdm_2_rec == g) |> 
-          pull(n)
-  }
-  style_number(val)
-}
-
-# Doctors
-n_doc_all <- get_n_style("Doctor")
-n_doc_m   <- get_n_style("Doctor", "Male")
-n_doc_f   <- get_n_style("Doctor", "Female")
-
-# Nurses
-n_nur_all <- get_n_style("Nurse")
-n_nur_m   <- get_n_style("Nurse", "Male")
-n_nur_f   <- get_n_style("Nurse", "Female")
-
-
-# Summaries (With add_overall) 
-
-doc_n <- 
-  ds_ua |> 
-  filter(work_2 == "Doctor") |>
-  tbl_summary(
-    by = scdm_2_rec,
-    include = all_of(scdm_vars),
-    statistic = list(all_categorical() ~ "{n}"),
-    missing = "no"
-  ) |>
-  add_overall() |> # Adds stat_0
-  modify_header(all_stat_cols() ~ "**{level}** (n)") 
-
-doc_p <- 
-  subset(svy_ua_w, work_2 == "Doctor") |>
-  tbl_svysummary(
-    by = scdm_2_rec,
-    include = all_of(scdm_vars),
-    statistic = list(all_categorical() ~ "({p}%)"),
-    missing = "no"
-  ) |>
-  add_overall() |> # Adds stat_0
-  modify_header(all_stat_cols() ~ "**{level}** (%)")
-
-doc_merged <- 
-  tbl_merge(list(doc_n, doc_p), 
-            tab_spanner = FALSE)
-
-
-nur_n <- 
-  ds_ua |> 
-  filter(work_2 == "Nurse") |>
-  tbl_summary(
-    by = scdm_2_rec,
-    include = all_of(scdm_vars),
-    statistic = list(all_categorical() ~ "{n}"),
-    missing = "no"
-  ) |>
-  add_overall() |>
-  modify_header(all_stat_cols() ~ "**{level}** (n)")
-
-nur_p <- 
-  subset(svy_ua_w, work_2 == "Nurse") |>
-  tbl_svysummary(
-    by = scdm_2_rec,
-    include = all_of(scdm_vars),
-    statistic = list(all_categorical() ~ "({p}%)"),
-    missing = "no"
-  ) |>
-  add_overall() |>
-  modify_header(all_stat_cols() ~ "**{level}** (%)")
-
-nur_merged <- 
-  tbl_merge(list(nur_n, nur_p), 
-            tab_spanner = FALSE)
-
-
-# Merge and GT
-
-scdm_tbl_w <- 
-  
-  tbl_merge(
-    list(doc_merged, nur_merged),
-    tab_spanner = c("**Doctor**", "**Nurse**")
-  ) |>  
-  modify_footnote(everything() ~ NA) |> 
-  as_gt() 
-
-# Column merging
-
-# LOGIC:
-# stat_0 = Overall
-# stat_1 = Female (Alphabetical F < M)
-# stat_2 = Male
-#
-# Suffixes added by tbl_merge:
-# _1 = Counts (from the first merge n+p)
-# _2 = Props  (from the first merge n+p)
-# _1 (outer) = Doctors
-# _2 (outer) = Nurses
-
-scdm_tbl_w <- 
-  scdm_tbl_w |>
-
-  cols_merge(columns = c("stat_0_1_1", "stat_0_2_1")) |> 
-  cols_merge(columns = c("stat_1_1_1", "stat_1_2_1")) |> 
-  cols_merge(columns = c("stat_2_1_1", "stat_2_2_1")) |> 
-  cols_merge(columns = c("stat_0_1_2", "stat_0_2_2")) |> 
-  cols_merge(columns = c("stat_1_1_2", "stat_1_2_2")) |> 
-  cols_merge(columns = c("stat_2_1_2", "stat_2_2_2")) |> 
-  cols_label(
-    stat_0_1_1 = md(glue::glue("**Overall**<br>N = {n_doc_all}")), 
-    stat_1_1_1 = md(glue::glue("**Female**<br>N = {n_doc_f}")), 
-    stat_2_1_1 = md(glue::glue("**Male**<br>N = {n_doc_m}")),
-    stat_0_1_2 = md(glue::glue("**Overall**<br>N = {n_nur_all}")),
-    stat_1_1_2 = md(glue::glue("**Female**<br>N = {n_nur_f}")),
-    stat_2_1_2 = md(glue::glue("**Male**<br>N = {n_nur_m}"))
-  ) |>
-  tab_footnote(
-    footnote = "n (weighted %)",
-    locations = cells_column_labels(
-      columns = c(stat_0_1_1, stat_1_1_1, stat_2_1_1, 
-                  stat_0_1_2, stat_1_1_2, stat_2_1_2)
-    )
-  )
-
-# View
-scdm_tbl_w
-
-# Save
-gtsave(scdm_tbl_w, "out/tables/scdm_tbl_w.docx")
-
-rm(n_counts, n_m_doc, n_m_nur, n_f_doc, n_f_nur, nur_n, nur_p,
-   doc_merged, doc_n, doc_p, nur_merged)
-```
-
-```{r mh-by-scdm-w}
-# Run functions 
-tbl_depression_w <- 
-  generate_outcome_table_w_out("phq_co", "Probable Depression")
-gtsave(tbl_depression_w, "out/tables/dep_by_scdm_w.docx")
-
-tbl_anxiety_w <- 
-  generate_outcome_table_w_out("gad_co", "Probable Anxiety")
-gtsave(tbl_anxiety_w, "out/tables/anx_by_scdm_w.docx")
-
-tbl_suicide_w <- 
-  generate_outcome_table_w_out("suic_idea", "Passive Suicide Thoughts")
-gtsave(tbl_suicide_w, "out/tables/suic_by_scdm_w.docx")
-
-
-tbl_depression_w
-tbl_anxiety_w
-tbl_suicide_w
-```
-
-```{r exp-by-scdm-w}
-# Generate tables with function
-tbl_harassment_w <- generate_exposure_table_w_exp("work_30_dic", "Sexual harassment")
-gtsave(tbl_harassment_w, "out/tables/harass_by_scdm_w.docx")
-
-tbl_threats_w <- generate_exposure_table_w_exp("work_31_dic", "Violent threats")
-gtsave(tbl_threats_w, "out/tables/threats_by_scdm_w.docx")
-
-tbl_violence_w <- generate_exposure_table_w_exp("work_32_dic", "Physical violence")
-gtsave(tbl_violence_w, "out/tables/violence_by_scdm_w.docx")
-
-tbl_bullying_w <- generate_exposure_table_w_exp("work_33_dic", "Bullying")
-gtsave(tbl_bullying_w, "out/tables/bullying_by_scdm_w.docx")
-
-tbl_colleagues_w <- generate_exposure_table_w_exp("work_21_dic", "Colleague support")
-gtsave(tbl_colleagues_w, "out/tables/col_supp_by_scdm_w.docx")
-
-tbl_superiors_w <- generate_exposure_table_w_exp("work_22_dic", 
-                                         "Support from superiors")
-gtsave(tbl_superiors_w, "out/tables/sup_supp_by_scdm_w.docx")
-
-tbl_meaning_w <- generate_exposure_table_w_exp("wb_wami_1_dic", "Meaning in work")
-gtsave(tbl_meaning_w, "out/tables/meaning_by_scdm_w.docx")
-
-tbl_purpose_w <- generate_exposure_table_w_exp("wb_wami_2_dic", "Purpose in work")
-gtsave(tbl_purpose_w, "out/tables/purpose_by_scdm_w.docx")
-
-
-
-# Visualize
-
-tbl_harassment_w
-tbl_threats_w
-tbl_violence_w
-tbl_bullying_w
-tbl_colleagues_w
-tbl_superiors_w
-tbl_meaning_w
-tbl_purpose_w
-
-
-```
-
-### Exposures
-
-```{r exp-overall-w}
-# Generate table
-table_all_exposures_w <- gen_w_exp_tbl(exposures)
-
-gtsave(table_all_exposures_w, "out/tables/all_exp_tbl_w.docx")
-
-table_all_exposures_w
-
-```
-
-### Outcomes
-
-```{r outcomes-overall-w}
-# Generate table
-table_all_outcomes_w <- gen_w_out_tbl(outcomes)
-
-gtsave(table_all_outcomes_w, "out/tables/all_out_tbl_w.docx")
-
-table_all_outcomes_w
-```
-
-## Svy Models
-
-```{r function to map every model}
-# generate the grid for all possible combinations
-tasks_grid <- expand_grid(
-  outcome = outcomes,
-  exposure = names(exposure_map),
-  profession = c("Doctor", "Nurse")
-)
-
-# run function 
-pwalk(
-  list(tasks_grid$outcome, 
-       tasks_grid$exposure, 
-       tasks_grid$profession),
-  function(out, exp, prof) {
-    message(glue("Running: {out} vs {exp} ({prof})..."))
-    run_svy_models(out, exp, prof, svy_ua_w)
-  }
-)
-
-```
-
-## Survey results table
-
-```{r svy-tbl-res}
-# find svy objects
-svy_model_names <- ls(pattern = "^svy_", envir = .GlobalEnv)
-
-# Extraction
-survey_results_df <- 
-  map_dfr(svy_model_names, function(obj_name) {
-  
-  # Load the model object
-  model <- get(obj_name, envir = .GlobalEnv)
-  
-  # decode filename
-  parts <- str_split(obj_name, "_")[[1]]
-  
-  out_code   <- parts[2]
-  exp_code   <- parts[3]
-  prof_code  <- parts[4]
-  type_code  <- parts[5]
-  
-  # Decode Labels for the Table
-  outcome_label <- case_when(
-    out_code == "dep"  ~ "Depression",
-    out_code == "anx"  ~ "Anxiety",
-    out_code == "suic" ~ "Suicide thoughts"
-  )
-  
-  exposure_label <- case_when(
-    exp_code == "cols"    ~ "Colleague support",
-    exp_code == "sup"     ~ "Support from superiors",
-    exp_code == "har"     ~ "Sexual Harassment",
-    exp_code == "bul"     ~ "Bullying",
-    exp_code == "threats" ~ "Violent threats",
-    exp_code == "viol"    ~ "Physical violence",
-    exp_code == "mean"    ~ "Meaning in work",
-    exp_code == "purp"    ~ "Purpose in work"
-  )
-  
-  profession_label <- ifelse(prof_code == "doc", "Doctor", "Nurse")
-  
-  model_label <- case_when(
-    type_code == "cr"  ~ "Crude",
-    type_code == "str" ~ "Partially",
-    type_code == "adj" ~ "Fully Adj."
-  )
-  
- 
-  term_lookup <- case_when(
-    exp_code == "cols"    ~ "work_21_dicYes",
-    exp_code == "sup"     ~ "work_22_dicYes",
-    exp_code == "har"     ~ "work_30_dicYes",
-    exp_code == "bul"     ~ "work_33_dicYes",
-    exp_code == "threats" ~ "work_31_dicYes",
-    exp_code == "viol"    ~ "work_32_dicYes",
-    exp_code == "mean"    ~ "wb_wami_1_dicYes",
-    exp_code == "purp"    ~ "wb_wami_2_dicYes"
-  )
-  
-  # extract stats
-  res <- tryCatch({
-    
-    # Check family
-    is_logistic <- model$family$family %in% c("quasipoisson", "binomial")
-    
-    # Try to tidy
-    tidy(model, conf.int = TRUE, exponentiate = is_logistic)
-    
-  }, error = function(e) {
-    # If it fails, print the culprit and return NULL
-    warning(paste("FAILED model:", obj_name, "-", e$message))
-    return(NULL)
-  })
-  
-  if (is.null(res)) return(NULL)
-  
-  # exposure term
-  target_row <- 
-    res |> 
-    filter(term == term_lookup)
-  
-  if(nrow(target_row) > 0) {
-    # If multiple rows match (rare), take the first one
-    est  <- target_row$estimate[1]
-    low  <- target_row$conf.low[1]
-    high <- target_row$conf.high[1]
-    
-    
-    # calculate absolute risks/means
-    dat <- model$model
-    
-    exp_var_name <- str_remove(term_lookup, "Yes$")
-    resp_var_name <- names(dat)[1]
-    
-    x_vec <- as.character(dat[[exp_var_name]])
-    y_raw <- as.numeric(dat[[resp_var_name]])
-    
-    if (is.factor(y_raw)) {
-       # Ensure it is 0 and 1
-       y_vec <- as.numeric(as.character(y_raw)) 
-    } else {
-       y_vec <- as.numeric(y_raw)
-    }
-    
-    if (is_logistic) {
-      # Normalize 1/2 to 0/1 if necessary
-      if(max(y_vec, na.rm = TRUE) > 1) y_vec <- y_vec - 1
-      
-      # Calculate %
-      risk_unexp <- mean(y_vec[x_vec == "No"], na.rm = TRUE) * 100
-      risk_exp   <- mean(y_vec[x_vec == "Yes"], na.rm = TRUE) * 100
-      
-      risk_unexp_str <- sprintf("%.1f%%", risk_unexp)
-      risk_exp_str   <- sprintf("%.1f%%", risk_exp)
-      
-      } else {
-        
-        # Calculate Mean
-        mean_unexp <- mean(y_vec[x_vec == "No"], na.rm = TRUE)
-        mean_exp   <- mean(y_vec[x_vec == "Yes"], na.rm = TRUE)
-        
-        risk_unexp_str <- sprintf("%.2f", mean_unexp)
-        risk_exp_str   <- sprintf("%.2f", mean_exp)
-        }
-    
-    tibble(
-      Outcome = outcome_label,
-      Exposure = exposure_label,
-      Profession = profession_label,
-      Model = model_label,
-      Type = ifelse(is_logistic, 
-                    "PR", 
-                    "Beta"),
-      Est_CI = sprintf("%.2f (%.2f, %.2f)", est, low, high),
-      Risk_Unexposed = risk_unexp_str,
-      Risk_Exposed = risk_exp_str
-    )
-    
-  } else {
-    return(NULL)
-  }
-})
-
-
-survey_results_df
-
-# Save
-saveRDS(survey_results_df, "out/dataframes/svy_results_df.rds")
-writexl::write_xlsx(survey_results_df, "out/dataframes/svy_results_df.xlsx")
-
-# generate table
-tbl_svy_res <- build_svy_gt(
-  survey_results_df, 
-  metric_type = "PR", 
-  title_text = "**Survey Logistic Models (PR)**", 
-  footnote_text = "Weighted Prevalence Ratios (95% CI)"
-)
-
-
-gtsave(tbl_svy_res, "out/tables/svy_res_tbl.docx")
-
-
-tbl_svy_res
-
-ls() |> 
-  str_subset("^svy_") |> 
-  rm(list = _)
-
-rm(build_svy_gt, run_svy_models)
-```
-
-# Generalized Linear Models with Multilevel variables
-
-## Run models
-
-```{r glm-run-models}
-# define covariates
-covariate_map <- list(
-  "peer" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2", "work_5_rec",
-             "work_3_rec", "work_1"),
-  
-  "viol" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2", "work_5_rec"),
-  
-  "har_bul" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2", "work_1",
-                "work_3_rec", "work_5_rec"),
-  
-  "meanpur" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2",
-                "work_5_rec", "work_3_rec", "work_1", "scdm_4_dic",
-                "scdm_5_dic"),
-  
-  "structure" = c("conflict", "scdm_1_rec", "scdm_2_rec", "work_2")
-)
-
-analysis_plan <- tribble(
-  ~Exposure,     ~Covar_Key,
-  "work_21_dic", "peer",
-  "work_22_dic", "peer",
-  "work_31_dic", "viol",
-  "work_32_dic", "viol",
-  "work_30_dic", "har_bul",
-  "work_33_dic", "har_bul",
-  "wb_wami_1_dic", "meanpur",
-  "wb_wami_2_dic", "meanpur"
-)
-
-outcomes_map <- tribble(
-  ~Outcome,    ~Family,
-  "phq_co",    "poisson",
-  "gad_co",    "poisson",
-  "suic_idea",    "poisson",
-)
-
-# Define stratification of models
-profs <- c("Doctor", "Nurse")
-
-# Generate exposure-outcome binomials
-tasks <- expand_grid(
-  out_row = outcomes_map,
-  exp_row = analysis_plan,
-  profession = profs
-) |> 
-  tidyr::unpack(cols = c(out_row, exp_row))
-
-
-all_runs_list <- pmap(list(
-  tasks$Outcome,
-  tasks$Family,
-  tasks$Exposure,
-  tasks$Covar_Key,
-  tasks$profession
-), function(outcome, family, exposure, cov_key, prof) {
-  
-  message(paste("Processing:", outcome, "x", exposure, "in", prof))
-  
-  res_crude <- run_crude_glm(
-    data = ds_ua, 
-    outcome_var = outcome,
-    exposure_var = exposure, 
-    profession = prof,
-    cluster_var = "loc_3", 
-    family_type = family,
-    )
-
-  
-
-  res_str <- run_glm_adj(
-    data = ds_ua, 
-    outcome_var = outcome, 
-    exposure_var = exposure,
-    confounder_list = covariate_map[["structure"]], 
-    profession = prof,
-    cluster_var = "loc_3", 
-    family_type = family, 
-    model_label = "Partially adjusted"
-    )
-  
-  #look up for specific covariate list
-  specific_covars <- covariate_map[[cov_key]]
-  
-  res_adj <- run_glm_adj(
-    data = ds_ua, 
-    outcome_var = outcome, 
-    exposure_var = exposure,
-    confounder_list = specific_covars, 
-    profession = prof,
-    cluster_var = "loc_3", 
-    family_type = family, 
-    model_label = "Fully adjusted"
-    )
-  
-  
-  # Combine internally
-  row_multilevel <- 
-    
-    bind_rows(
-      res_crude$multilevel,
-      res_str$multilevel,
-      res_adj$multilevel
-    )
-  
-  row_robust <- 
-    
-    bind_rows(
-      res_crude$robust,
-      res_str$robust,
-      res_adj$robust
-    )
-  
-  # return as clean pair
-  return(list(
-    multilevel = row_multilevel,
-    robust     = row_robust
-  ))
-})
-
-
-# Unzip and combine
-
-glm_multilevel_df <- map_dfr(all_runs_list, "multilevel")
-
-glm_robust_df <- map_dfr(all_runs_list, "robust")
-
-
-# Save
-
-saveRDS(glm_multilevel_df, "out/dataframes/glm_multilevel_df.rds")
-writexl::write_xlsx(glm_multilevel_df,
-                    "out/dataframes/glm_multilevel_df.xlsx")
-
-
-saveRDS(glm_robust_df, "out/dataframes/glm_robust_df.rds")
-writexl::write_xlsx(glm_robust_df, "out/dataframes/glm_robust_df.xlsx")
-```
-
-## GLM results
-
-```{r glm-results}
-# SE Ratios
-glm_se_ratios <-
-  
-  glm_multilevel_df |>
-  select(Outcome, Exposure, Profession, Adjustment, beta, PR, SE) |> 
-  rename(`PR (ML)` = PR,
-         `SE (ML)` = SE) |> 
-  left_join(glm_robust_df |> 
-              select(Outcome, Exposure, Profession, Adjustment, SE),
-            by = c("Outcome", "Exposure", "Profession", "Adjustment")) |> 
-  rename(`SE (Robust)` = SE) |> 
-  mutate(`SE Ratio` = `SE (Robust)` / `SE (ML)`) |> 
-  mutate(
-    Exposure = case_when(
-      Exposure == "work_21_dic" ~ "Colleague support",
-      Exposure == "work_22_dic" ~ "Support from superiors",
-      Exposure == "work_31_dic" ~ "Violent threats",
-      Exposure == "work_32_dic" ~ "Physical violence",
-      Exposure == "work_30_dic" ~ "Sexual Harassment",
-      Exposure == "work_33_dic" ~ "Bullying",
-      Exposure == "wb_wami_1_dic" ~ "Meaning in work",
-      Exposure == "wb_wami_2_dic" ~ "Purpose in work",
-      TRUE ~ Exposure),
-    Outcome = case_when(
-      Outcome == "phq_co" ~ "Depression",
-      Outcome == "gad_co" ~ "Anxiety",
-      Outcome == "suic_idea" ~ "Suicide thoughts",
-      TRUE ~ Outcome
-    )
-  )
-
-glm_se_ratios
-
-
-# Save
-
-saveRDS(glm_se_ratios, "out/dataframes/glm_se_ratios_df.rds")
-writexl::write_xlsx(glm_se_ratios, "out/dataframes/glm_se_ratios_df.xlsx")
-
-
-# Results with ML estimator + SE robust
-
-glm_results <-
-  
-  glm_multilevel_df |> 
-  select(-c(model, N_Analysis, Risk_Unexp, Risk_Exp)) |> 
-  mutate(
-    Exposure = case_when(
-      Exposure == "work_21_dic" ~ "Colleague support",
-      Exposure == "work_22_dic" ~ "Support from superiors",
-      Exposure == "work_31_dic" ~ "Violent threats",
-      Exposure == "work_32_dic" ~ "Physical violence",
-      Exposure == "work_30_dic" ~ "Sexual Harassment",
-      Exposure == "work_33_dic" ~ "Bullying",
-      Exposure == "wb_wami_1_dic" ~ "Meaning in work",
-      Exposure == "wb_wami_2_dic" ~ "Purpose in work",
-      TRUE ~ Exposure),
-    Outcome = case_when(
-      Outcome == "phq_co" ~ "Depression",
-      Outcome == "gad_co" ~ "Anxiety",
-      Outcome == "suic_idea" ~ "Suicide thoughts",
-      TRUE ~ Outcome
-    )
-  ) |> 
-  mutate(
-     Est_CI = sprintf("%.2f (%.2f, %.2f)", PR, CI_l, CI_u)
-  )
-
-glm_results
-
-saveRDS(glm_results, "out/dataframes/glm_results_df.rds")
-writexl::write_xlsx(glm_results, "out/dataframes/glm_results_df.xlsx")
-  
-
-# Load data
-
-glm_results <- readRDS("out/dataframes/glm_results_df.rds")
-
-# Table of results
-tbl_binary_glm <- make_stratified_table(
-  glm_results,
-  "**GLM Multilevel models**",
-  "Prevalence Ratio (95% CI). All models include Region as a second-order covariate."
-)
-
-tbl_binary_glm
-
-
-gtsave(tbl_binary_glm, "out/tables/glm_res_tbl.docx")
-
-
-ls() |> 
-  str_subset("^glm_") |> 
-  rm(list = _)
-
-rm(glm_se_ratios, make_stratified_table, run_crude_glm, run_glm_adj)
-```
-
-# GLM Dose-Response models
-
-```{r glm-sens-dose-resp}
-
-analysis_plan_dose <- tribble(
-  ~Exposure,     ~Covar_Key,
-  "work_21", "peer",
-  "work_22", "peer",
-  "work_31", "viol",
-  "work_32", "viol",
-  "work_30", "har_bul",
-  "work_33", "har_bul",
-  "wb_wami_1", "meanpur",
-  "wb_wami_2", "meanpur",
-)
-
-outcomes_map_dose <- tribble(
-  ~Outcome,    ~Family,
-  "phq_sc",    "gaussian",
-  "gad_sc",    "gaussian",
-  "mh_phq_9",  "gaussian",
-)
-
-
-# Define exposure-outcome combinations
-tasks_dose <- expand_grid(
-  out_row = outcomes_map_dose,
-  exp_row = analysis_plan_dose,
-) |> 
-  tidyr::unpack(cols = c(out_row, exp_row))
-
-
-dose_all <- pmap_dfr(list(
-  tasks_dose$Outcome,
-  tasks_dose$Family,
-  tasks_dose$Exposure,
-  tasks_dose$Covar_Key
-  ), function(outcome, family, exposure, cov_key) {
-  
-  message(paste("Processing:", outcome, "&", exposure))
-
-  
-  res_adj <- run_glm_dose_emm(
-    data = ds_ua,
-    outcome_var = outcome,
-    exposure_var = exposure,
-    confounder_list = covariate_map[[cov_key]],
-    model_label = "Fully adjusted"
-  ) 
-  
-  print(res_adj)
-})
-
-
-
-dose_all <- 
-  dose_all |> 
-  mutate(
-    Est_CI = sprintf("%.2f (%.2f, %.2f)", estimate, conf.low, conf.high),
-    Exposure = case_when(
-      Exposure == "work_21" ~ "Colleague support",
-      Exposure == "work_22" ~ "Support from superiors",
-      Exposure == "work_31" ~ "Violent threats",
-      Exposure == "work_32" ~ "Physical violence",
-      Exposure == "work_30" ~ "Sexual Harassment",
-      Exposure == "work_33" ~ "Bullying",
-      Exposure == "wb_wami_1" ~ "Meaning in work",
-      Exposure == "wb_wami_2" ~ "Purpose in work",
-      TRUE ~ Exposure),
-    Outcome = case_when(
-      Outcome == "phq_sc" ~ "PHQ-9 score",
-      Outcome == "gad_sc" ~ "GAD-7 score",
-      Outcome == "mh_phq_9" ~ "PHQ-9 suicide item score",
-      TRUE ~ Outcome
-    ),
-    Category = if_else(
-      Exposure %in% c("Violent threats", "Physical violence",
-                      "Sexual Harassment", "Bullying"),
-      "Risk factor",
-      "Protective factor")
-    )
-
-dose_all
-
-saveRDS(dose_all, "out/dataframes/dose_all.rds")
-writexl::write_xlsx(dose_all, "out/dataframes/dose_all.xlsx")
-```
-
-```{r psw-dose-results}
-dose_resp_df <- 
-  readRDS("out/dataframes/dose_all.rds") 
-
-# Custom palette: Purple -> Teal -> Green -> Lime
-viridis_lime_palette <- c(
-  "#440154", # Dark Purple
-  "lightblue", # Blue/Teal
-  "#35B779", # Medium Green
-  "#B4DE2C"  # Lime Green
-)
-
-# Assign these colors to labels
-custom_colors <- c(
-  # Risk Factors 
-  "Bullying"                = viridis_lime_palette[1],
-  "Sexual Harassment"       = viridis_lime_palette[2],
-  "Violent threats"         = viridis_lime_palette[3],
-  "Physical violence"       = viridis_lime_palette[4],
-  
-  # Protective Factors
-  "Colleague support"       = viridis_lime_palette[1],
-  "Support from superiors"  = viridis_lime_palette[2],
-  "Meaning in work"         = viridis_lime_palette[3],
-  "Purpose in work"         = viridis_lime_palette[4]
-)
-
-
-dose_plots <-
-  
-  dose_resp_df |> 
-  group_by(Outcome, Exposure) |> 
-  mutate(Level_Index = row_number()) |> 
-  ungroup() |> 
-  mutate(Outcome = factor(Outcome, 
-                          levels = c("PHQ-9 score",
-                                     "GAD-7 score",
-                                     "PHQ-9 suicide item score")),
-         Exposure = factor(Exposure, levels = exposure_order)) |> 
-  arrange(Outcome) |> 
-  ggplot(aes(x = Level_Index, 
-             y = estimate, 
-             group = Exposure,
-             colour = Exposure)) +
-  geom_line(linewidth = 0.5,
-            position = position_dodge(width = 0.2)) + 
-  geom_point(size = 2,
-             position = position_dodge(width = 0.2)) + 
-  facet_grid(rows = vars(Outcome),
-             cols = vars(Category),
-             scales = "free",
-             switch = "y") + 
-  scale_colour_manual(values = custom_colors) +
-  scale_x_continuous(breaks = 1:5, minor_breaks = NULL) +
-  labs(
-    x = "Level of exposure",
-    y = "Score change estimate",
-    colour ="Exposure"
-  ) + 
-  facetted_pos_scales(
-    y = list(
-      Outcome == "PHQ-9 score" ~ scale_y_continuous(
-        limits = c(0, 27),
-        breaks = c(0, 5, 10, 15, 20, 25)),
-      Outcome == "GAD-7 score" ~ scale_y_continuous(
-        limits = c(0, 21),
-        breaks = c(0, 5, 10, 15, 20)),
-      Outcome == 
-        "PHQ-9 suicide item score" ~ scale_y_continuous(
-        limits = c(0, 4),
-        breaks = c(0, 1, 2, 3, 4))
-    )
-  ) + 
-  theme_minimal() +
-  theme(
-    strip.placement = "outside",  
-    strip.text.y.left = element_text(angle = 90, face = "bold", size = 10), 
-    strip.text.x = element_text(face = "bold", size = 10),
-    axis.text.x = element_text(size = 10),
-    axis.title.x = element_text(size = 10),
-    axis.text.y = element_text(size = 10),
-    panel.border = element_rect(color = "black", fill = NA),  
-    axis.title.y = element_blank(), 
-    legend.position = "right",
-    legend.key.width = unit(1.5, "cm")
-  )
-
-dose_plots
-
-ggsave(filename = "dose_resp_plots.pdf",
-       plot = dose_plots,
-       path = "out/plots/",
-       width = 170,
-       height = 170,
-       units = "mm",
-       dpi = 320,
-       scale = 1.5
-       )
-
-ls() |> 
-  str_subset("^glm_") |> 
-  rm(list = _)
-
-
 ```
 
 # Absolute risks
