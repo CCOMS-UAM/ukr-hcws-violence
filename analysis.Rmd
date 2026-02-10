@@ -1691,7 +1691,15 @@ brm_results_df_agg <-
     if (raw_col_name %in% names(dat)) {
       
       # Extract vectors
-      x_vec <- as.numeric(dat[[raw_col_name]])
+      x_raw <- as.character(dat[[raw_col_name]])
+      
+      x_vec <- case_when(
+        x_raw == "No"  ~ 0,
+        x_raw == "Yes" ~ 1,
+        TRUE           ~ NA_real_
+        )
+      
+      
       # The response is usually the first column in brms data
       y_vec <- as.numeric(dat[[1]]) 
       
