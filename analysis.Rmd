@@ -2414,7 +2414,7 @@ ls() |>
   str_subset("^glm_") |> 
   rm(list = _)
 
-rm(glme_se_ratios, make_stratified_table, run_crude_glm, run_glm_adj)
+rm(glm_se_ratios, make_stratified_table, run_crude_glm, run_glm_adj)
 ```
 
 # GLM Dose-Response models
@@ -3032,7 +3032,7 @@ crimea <-
 
 
 # get data
-exp_reg <- readRDS("out/exposure_regions.rds") |> 
+exp_reg <- readRDS("out/dataframes/exposure_regions.rds") |> 
   pivot_longer(
     cols = starts_with("work_"),
     names_to = "Exposure",
@@ -3047,7 +3047,7 @@ exp_reg <- readRDS("out/exposure_regions.rds") |>
 
 out_prev_agg <- c("phq_co", "gad_co", "suic_idea")
 
-out_reg <- readRDS("out/outcome_regions.rds") |> 
+out_reg <- readRDS("out/dataframes/outcome_regions.rds") |> 
   pivot_longer(
     cols = all_of(out_prev_agg),
     names_to = "Outcome",
@@ -3611,7 +3611,7 @@ reg_anx_exp <-
 
 
 
-reg_anx_dep
+reg_anx_exp
 
 
 
