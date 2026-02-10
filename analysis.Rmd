@@ -3134,7 +3134,7 @@ outcomes_gen_map
 ggsave(
   "outcomes_map.pdf",
   plot = outcomes_gen_map,
-  path = "out/",
+  path = "out/plots/",
   scale = 1.7,
   width = 210,
   height = 160,
@@ -3187,7 +3187,7 @@ exposures_gen_map
 ggsave(
   "exposures_map.pdf",
   plot = exposures_gen_map,
-  path = "out/",
+  path = "out/plots/",
   scale = 1.7,
   width = 210,
   height = 160,
@@ -3721,7 +3721,7 @@ dep_assoc_map_grid
 ggsave(
   "assoc_dep_map.pdf",
   plot = dep_assoc_map_grid,
-  path = "out/",
+  path = "out/plots/",
   scale = 1.7,
   width = 210,
   height = 160,
@@ -3784,7 +3784,7 @@ anx_assoc_map_grid
 ggsave(
   "assoc_anx_map.pdf",
   plot = anx_assoc_map_grid,
-  path = "out/",
+  path = "out/plots/",
   scale = 1.7,
   width = 210,
   height = 160,
