@@ -5,8 +5,8 @@
 # This next lines should only be run once.
 
 # install.packages(
-#   "cmdstanr", 
-#   repos = c('https://stan-dev.r-universe.dev', 
+#   "cmdstanr",
+#   repos = c('https://stan-dev.r-universe.dev',
 #             getOption("repos"))
 #   )
 
