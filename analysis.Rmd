@@ -1026,6 +1026,18 @@ ggsave(filename = "dose_resp_plots.pdf",
        scale = 1.5
        )
 
+
+ragg::agg_png("out/plots/dose_resp_plots.png",
+              width = 170,
+              height = 170,
+              units = "mm",
+              res = 600,
+              scaling = 0.75)
+
+print(dose_plots)
+
+dev.off()
+
 ls() |> 
   str_subset("^glm_") |> 
   rm(list = _)
@@ -2310,6 +2322,17 @@ ggsave(filename = "forest_bayes_comparison.pdf",
        dpi = 320,
        scale = 1.5
        )
+
+ragg::agg_png("out/plots/forest_bayes_comparison.png",
+              width = 210,
+              height = 170,
+              units = "mm",
+              res = 600,
+              scaling = 0.65)
+
+print(forest_bayes_comp)
+
+dev.off()
 ```
 
 ## Model diagnostics
@@ -2447,6 +2470,17 @@ ggsave(
   unit = "mm",
   dpi = 350
 )
+
+ragg::agg_png("out/plots/bayes_diagnostic_plots.png",
+              width = 220,
+              height = 160,
+              units = "mm",
+              res = 600,
+              scaling = 0.75)
+
+print(final_dx_plots_bayes)
+
+dev.off()
 
 rm(bay_dep_bul_doc_adj, bay_dep_bul_nur_adj, bay_sens_dep_bul_doc_adj,
    bay_sens_dep_bul_nur_adj, final_dx_plots_bayes)
@@ -2862,6 +2896,18 @@ ggsave(filename = "forest_sens_comparison.pdf",
        scale = 2.2
        )
 
+ragg::agg_png("out/plots/forest_sens_comparison.png",
+              width = 210,
+              height = 170,
+              units = "mm",
+              res = 600,
+              scaling = 0.5)
+
+print(forest_sens_comp)
+
+dev.off()
+
+
 
 forest_sens_suic <-
   
@@ -2917,6 +2963,18 @@ ggsave(filename = "forest_sens_comparison_suic.pdf",
        dpi = 320,
        scale = 1.5
        )
+
+ragg::agg_png("out/plots/forest_sens_comparison_suic.png",
+              width = 210,
+              height = 170,
+              units = "mm",
+              res = 600,
+              scaling = 0.75)
+
+print(forest_sens_suic)
+
+dev.off()
+
 ```
 
 # Sensitivity table
@@ -3143,6 +3201,18 @@ ggsave(
 )
 
 
+ragg::agg_png("out/plots/outcomes_map.png",
+              width = 210,
+              height = 160,
+              units = "mm",
+              res = 600,
+              scaling = 0.65)
+
+print(outcomes_gen_map)
+
+dev.off()
+
+
 # exposures
 
 exposures_gen_map <-
@@ -3194,6 +3264,17 @@ ggsave(
   unit = "mm",
   dpi = 350
 )
+
+ragg::agg_png("out/plots/exposures_map.png",
+              width = 210,
+              height = 160,
+              units = "mm",
+              res = 600,
+              scaling = 0.65)
+
+print(exposures_gen_map)
+
+dev.off()
 ```
 
 ## Aggregated ARs
@@ -3729,6 +3810,17 @@ ggsave(
   dpi = 350
 )
 
+ragg::agg_png("out/plots/asssoc_dep_map.png",
+              width = 210,
+              height = 160,
+              units = "mm",
+              res = 600,
+              scaling = 0.65)
+
+print(dep_assoc_map_grid)
+
+dev.off()
+
 # anxiety
 
 
@@ -3792,6 +3884,17 @@ ggsave(
   dpi = 350
 )
 
+
+ragg::agg_png("out/plots/asssoc_anx_map.png",
+              width = 210,
+              height = 160,
+              units = "mm",
+              res = 600,
+              scaling = 0.65)
+
+print(anx_assoc_map_grid)
+
+dev.off()
 ```
 
 # Cronbach's Alpha
@@ -3894,6 +3997,7 @@ miss_through_plot <-
             "Item 26",
             "Item 27",
             "Item 31",
+            "Item 59",
             "Item 62")) |>  
   mutate(
     across(
@@ -3919,7 +4023,7 @@ miss_through_plot <-
              y = prop)) +
   geom_col(position = "dodge") +
   scale_y_continuous(labels = scales::percent,
-                     limits = c(0, 0.25)) +
+                     limits = c(0, 0.6)) +
   scale_fill_grey(start = 0.8, end = 0.2, name = "Data") +
   theme_minimal() +
   labs(x = "Variable", 
@@ -3946,6 +4050,17 @@ ggsave(filename = "missing_vals_through.pdf",
        dpi = 320,
        scale = 1.5
        )
+
+ragg::agg_png("out/plots/missing_vals_through.png",
+              width = 210,
+              height = 170,
+              units = "mm",
+              res = 600,
+              scaling = 0.7)
+
+print(miss_through_plot)
+
+dev.off()
 
 
 names(ds_ua) <- var_names_orig
