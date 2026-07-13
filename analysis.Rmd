@@ -3281,7 +3281,7 @@ dev.off()
 
 ### Depression
 
-```{r reg-dep-maps-prep}
+```{r reg-dep-maps-prep-prop, eval = FALSE}
 
 # effect of violence on dep
 # depression
@@ -3491,9 +3491,166 @@ writexl::write_xlsx(reg_dep_exp,
                     "out/dataframes/region_depression_assoc.xlsx")
 ```
 
+```{r reg-dep-maps-prep-prs}
+
+# effect of violence on dep
+# depression
+bay_dep_har_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_dep_har_agg_adj.rds")
+
+bay_dep_bul_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_dep_bul_agg_adj.rds")
+
+bay_dep_threats_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_dep_threats_agg_adj.rds")
+
+bay_dep_viol_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_dep_viol_agg_adj.rds")
+
+reg_dep_har <- 
+  
+  bay_dep_har_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_30_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_30_dicYes),
+    PR = prob_Yes / prob_No # PR per draw
+    ) |>
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR) # Posterior mean of the PR
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " ")) |>
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |> 
+  mutate(
+    Exposure = "Sexual Harassment",
+    Outcome = "Depression"
+  ) |> 
+  select(-loc_3)
+
+
+
+reg_dep_bul <- 
+  
+  bay_dep_bul_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_33_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_33_dicYes),
+    PR = prob_Yes / prob_No
+    ) |>
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR)
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " ")) |> 
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |> 
+  mutate(
+    Exposure = "Bullying",
+    Outcome = "Depression"
+  ) |> 
+  select(-loc_3)
+
+
+
+reg_dep_threats <- 
+  
+  bay_dep_threats_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_31_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_31_dicYes),
+    PR = prob_Yes / prob_No
+    ) |> 
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR)
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " "))|> 
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |>
+  mutate(
+    Exposure = "Violent threats",
+    Outcome = "Depression"
+  ) |> 
+  select(-loc_3)
+
+
+
+
+reg_dep_viol <- 
+  
+  bay_dep_viol_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_32_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_32_dicYes),
+    PR = prob_Yes / prob_No
+    ) |>
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR)
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " "))|> 
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |>
+  mutate(
+    Exposure = "Physical violence",
+    Outcome = "Depression"
+  ) |> 
+  select(-loc_3)
+
+
+
+
+# join all
+reg_dep_exp <- 
+  
+  reg_dep_har |> 
+  bind_rows(reg_dep_bul, reg_dep_threats, reg_dep_viol)
+
+
+reg_dep_exp
+
+
+saveRDS(reg_dep_exp, "out/dataframes/region_depression_assoc_prs.rds")
+writexl::write_xlsx(reg_dep_exp,
+                    "out/dataframes/region_depression_assoc_prs.xlsx")
+```
+
 ### Anxiety
 
-```{r reg-anx-maps-prep}
+```{r reg-anx-maps-prep-prob, eval = FALSE}
 bay_anx_har_agg_adj <-
   readRDS("out/bayesian_models_agg/bay_anx_har_agg_adj.rds")
 
@@ -3708,9 +3865,163 @@ saveRDS(reg_anx_exp, "out/dataframes/region_anxiety_assoc.rds")
 writexl::write_xlsx(reg_anx_exp, "out/dataframes/region_anxiety_assoc.xlsx")
 ```
 
+```{r reg-anx-maps-prep-prs}
+bay_anx_har_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_anx_har_agg_adj.rds")
+
+bay_anx_bul_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_anx_bul_agg_adj.rds")
+
+bay_anx_threats_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_anx_threats_agg_adj.rds")
+
+bay_anx_viol_agg_adj <-
+  readRDS("out/bayesian_models_agg/bay_anx_viol_agg_adj.rds")
+
+reg_anx_har <- 
+  
+  bay_anx_har_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_30_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_30_dicYes),
+    PR = prob_Yes / prob_No # PR per draw
+    ) |>
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR) # Posterior mean of the PR
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " ")) |>
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |> 
+  mutate(
+    Exposure = "Sexual Harassment",
+    Outcome = "Anxiety"
+  ) |> 
+  select(-loc_3)
+
+
+
+reg_anx_bul <- 
+  
+  bay_anx_bul_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_33_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_33_dicYes),
+    PR = prob_Yes / prob_No
+    ) |>
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR)
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " ")) |> 
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |> 
+  mutate(
+    Exposure = "Bullying",
+    Outcome = "Anxiety"
+  ) |> 
+  select(-loc_3)
+
+
+
+reg_anx_threats <- 
+  
+  bay_anx_threats_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_31_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_31_dicYes),
+    PR = prob_Yes / prob_No
+    ) |> 
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR)
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " "))|> 
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |>
+  mutate(
+    Exposure = "Violent threats",
+    Outcome = "Anxiety"
+  ) |> 
+  select(-loc_3)
+
+
+
+
+reg_anx_viol <- 
+  
+  bay_anx_viol_agg_adj |> 
+  spread_draws(
+    b_Intercept, b_work_32_dicYes, r_loc_3[loc_3, term]
+    ) |> 
+  mutate(
+    prob_No = plogis(b_Intercept + r_loc_3),
+    prob_Yes = plogis(b_Intercept + r_loc_3 + b_work_32_dicYes),
+    PR = prob_Yes / prob_No
+    ) |>
+  group_by(loc_3) |> 
+  summarise(
+    PR = mean(PR)
+    ) |> 
+  mutate(loc_3 = str_replace_all(loc_3, "\\.", " "))|> 
+  mutate(loc_3 = case_when(
+           loc_3 == "М  Київ" ~ "М. Київ",
+           TRUE ~ loc_3
+         )) |> 
+  add_row(tibble_row(loc_3 = "Ар Крим")) |> 
+  left_join(ua_reg_conflict |> select(loc_3, loc_en, fips_code, combat, occupation),
+            by = "loc_3") |>
+  mutate(
+    Exposure = "Physical violence",
+    Outcome = "Anxiety"
+  ) |> 
+  select(-loc_3)
+
+
+
+
+# join all
+reg_anx_exp <- 
+  
+  reg_anx_har |> 
+  bind_rows(reg_anx_bul, reg_anx_threats, reg_anx_viol)
+
+
+reg_anx_exp
+
+
+saveRDS(reg_anx_exp, "out/dataframes/region_anxiety_assoc_prs.rds")
+writexl::write_xlsx(reg_anx_exp,
+                    "out/dataframes/region_anxiety_assoc_prs.xlsx")
+```
+
 ### Maps
 
-```{r map generation-assoc}
+```{r map generation-assoc-prevs}
 
 reg_dep_exp <- readRDS("out/dataframes/region_depression_assoc.rds")
 reg_anx_exp <- readRDS("out/dataframes/region_anxiety_assoc.rds")
@@ -3897,6 +4208,170 @@ print(anx_assoc_map_grid)
 dev.off()
 ```
 
+```{r map generation-assoc-prs}
+
+reg_dep_exp <- readRDS("out/dataframes/region_depression_assoc_prs.rds")
+reg_anx_exp <- readRDS("out/dataframes/region_anxiety_assoc_prs.rds")
+
+
+ map_data <- 
+  reg_dep_exp |>
+  bind_rows(reg_anx_exp)
+
+
+darkblue = "#0045A8"
+aqua = "#38aec5"
+cyan = "#00C4D6"
+
+ukraine <- rnaturalearth::ne_states(country = "ukraine", 
+                                  returnclass = "sf")
+
+# crimea is included as russia (wrong)
+crimea <- 
+  rnaturalearth::ne_states(country = "russia",
+                                   returnclass = "sf") |> 
+  filter(name == "Crimea") |> 
+  select(fips, geometry)
+
+# Build map info and add conflict indicator
+map_info_assoc <- 
+  ukraine |>
+  select(fips, geometry) |>   
+  bind_rows(crimea) |> 
+  rename(fips_code = fips) |>        
+  left_join(map_data, by = "fips_code") |> 
+  # Create the conflict indicator
+  mutate(
+    conflict_status = case_when(
+      combat == "Yes" | occupation %in% c("Yes", "Partial") ~ "Active",
+      TRUE ~ "Non-active"
+    )
+  )
+
+
+map_info_assoc
+
+pr_assoc_map_grid <-
+  
+  map_info_assoc |> 
+  mutate(
+    PR_bin = cut(
+      PR, 
+      # Narrower breaks to capture the actual variance in your data
+      breaks = c(1.2, 1.4, 1.6, 1.8, 2.0), 
+      labels = c("1.2 - 1.4", "1.4 - 1.6", "1.6 - 1.8", "1.8 - 2.0"),
+      include.lowest = TRUE
+    ),
+    Exposure = factor(Exposure, levels = exposure_order),
+    Outcome = factor(Outcome, levels = c("Depression", "Anxiety"))
+  ) |> 
+  arrange(Exposure) |>
+  ggplot() +
+  geom_sf(aes(fill = PR_bin,
+          color = conflict_status,
+          linewidth = conflict_status)) +
+  scale_fill_brewer(
+    palette = "YlGnBu", 
+    direction = 1, 
+    na.value = "turquoise1",
+    name = "Prevalence\nRatio (PR)"
+  ) +
+  # scale_fill_gradient(
+  #   low = "#dae6f2",
+  #   high = darkblue,
+  #   na.value = "turquoise1",
+  #   labels = scales::number_format(accuracy = 0.1),
+  #   name = "Prevalence\nRatio (PR)"
+  #   ) +
+  scale_colour_manual(
+    values = c(
+      "Active" = "red",
+      "Non-active" = "grey23")
+  ) + 
+  scale_linewidth_manual(
+    values = c(
+      "Active" = 0.9,
+      "Non-active" = 0.2
+    ) 
+  ) +
+  # geom_sf_text(
+  #   aes(
+  #     label = ifelse(
+  #       is.na(PR),
+  #       "ND",
+  #       format(round(PR, 1), nsmall = 1))
+  #       ),
+  #   size = 2.5,
+  #   color = "white",
+  #   check_overlap = FALSE
+  #   ) +
+  coord_sf(expand = FALSE) + # removes internal padding between map and box
+  facet_grid(rows = vars(Exposure),
+             cols = vars(Outcome)) +
+  labs(color = "Conflict status",
+       linewidth = "Conflict status") +
+  # ggpubr::theme_pubr() +
+  theme_void() + 
+  theme(
+    # Set top, right, bottom, and left margins to absolutely zero
+    plot.margin = margin(t = 0, r = 0.3, b = 0, l = 0.3, unit = "cm"),
+    # Keep the facets close together
+    panel.spacing = unit(0.2, "lines"),
+    legend.position = "left",
+    legend.title = element_text(face = "bold"),
+    strip.text = element_text(size = 11, face = "bold", margin = margin(b = 2, t = 2))
+  )
+  # theme(
+  #   plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm"),
+  #   panel.spacing = unit(0.2, "lines"),
+  #   legend.position = "right",
+  #   legend.box.margin = margin(0, 0, 0, 0),
+  #   legend.margin = margin(0, 0, 0, 0),
+  #   legend.text = element_text(size = 10),
+  #   plot.title = element_text(hjust = 0.5),
+  #   axis.title = element_blank(),
+  #   axis.text = element_blank(),
+  #   axis.ticks = element_blank(),
+  #   axis.line = element_blank(),
+  #   strip.text = element_text(size = 10, face = "bold")
+  #   ) 
+
+
+pr_assoc_map_grid
+
+# grouped_pr_table <- 
+  # map_info_assoc |>
+  # st_drop_geometry() |> # Remove spatial data for table calculation
+  # filter(!is.na(PR)) |>
+  # group_by(Outcome, Exposure, conflict_status) |>
+  # summarise(Mean_PR = mean(PR), .groups = "drop") |>
+  # pivot_wider(names_from = conflict_status, values_from = Mean_PR) |>
+  # mutate(across(where(is.numeric), ~round(., 2)))
+
+  
+  ggsave(
+  "pr_assoc_map.pdf",
+  plot = pr_assoc_map_grid,
+  path = "out/plots/",
+  scale = 1.7,
+  width = 170,
+  height = 180,
+  unit = "mm",
+  dpi = 350
+)
+
+ragg::agg_png("out/plots/pr_asssoc_map.png",
+              width = 160,
+              height = 210,
+              units = "mm",
+              res = 600,
+              scaling = 0.65)
+
+print(pr_assoc_map_grid)
+
+dev.off()
+
+```
 # Cronbach's Alpha
 
 ```{r cronbachs-alpha}
