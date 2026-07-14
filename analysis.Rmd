@@ -27,7 +27,7 @@ library(sjlabelled)
 library(here)
 library(patchwork)
 library(ggh4x)
-
+library(ggpattern)
 ```
 
 # Prepare information
@@ -3132,7 +3132,21 @@ map_info_prev_exp <-
   select(fips, geometry) |>   
   bind_rows(crimea) |> 
   rename(fips_code = fips) |>        
-  inner_join(exp_reg, by = "fips_code")
+  inner_join(exp_reg, by = "fips_code") |> 
+  left_join(ua_reg_conflict |> select(fips_code, combat, occupation),
+             by = "fips_code") |> 
+  mutate(
+    conflict_status = case_when(
+      combat == "Yes" | occupation %in% c("Yes", "Partial") ~ "Active",
+      TRUE ~ "Non-active"
+    ),
+    prev_bin = cut(
+      Prevalence,
+      breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5),
+      labels = c("0% - 10%", "10% - 20%", "20% - 30%", "30% - 40%", "40% - 50%"),
+      include.lowest = TRUE
+    )
+  )
 
 map_info_prev_exp
 
@@ -3141,11 +3155,27 @@ map_info_prev_out <-
   select(fips, geometry) |>   
   bind_rows(crimea) |> 
   rename(fips_code = fips) |>        
-  inner_join(out_reg, by = "fips_code")
+  inner_join(out_reg, by = "fips_code") |> 
+  left_join(
+    ua_reg_conflict |> select(fips_code, combat, occupation),
+    by = "fips_code"
+  ) |> 
+  mutate(
+    conflict_status = case_when(
+      combat == "Yes" | occupation %in% c("Yes", "Partial") ~ "Active",
+      TRUE ~ "Non-active"
+    ),
+    prev_bin = cut(
+      Prevalence,
+      breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5),
+      labels = c("0% - 10%", "10% - 20%", "20% - 30%", "30% - 40%", "40% - 50%"),
+      include.lowest = TRUE
+    )
+  )
 
 map_info_prev_out
 
-# maps
+  # maps
 #outcomes
 
 outcomes_gen_map <-
@@ -3154,12 +3184,52 @@ outcomes_gen_map <-
   mutate(Outcome = factor(Outcome, levels = outcome_order)) |>
   arrange(Outcome) |> 
   ggplot() +
-  geom_sf(aes(fill = Prevalence), color = "white", size = 0.2) +  
-  scale_fill_gradient(low = "#dae6f2",
-                      high = darkblue,
-                      na.value = "turquoise1",
-                      labels = scales::percent,
-                      limits = c(0, 0.5)) +
+  geom_sf_pattern(
+    aes(
+      fill = prev_bin,
+      colour = conflict_status,
+      linewidth = I(ifelse(conflict_status == "Active", 0.8, 0.3)),
+      pattern = conflict_status
+    ),
+    pattern_color = "grey70",
+    pattern_fill = "white",
+    pattern_alpha = 0.5,
+    pattern_density = 0.05,
+    pattern_spacing = 0.015, 
+    pattern_angle = 45
+  ) +
+  scale_pattern_manual(
+    values = c(
+      "Active" = "crosshatch",
+      "Non-active" = "none"
+    ),
+    guide = "none"
+  ) +
+  # geom_sf(aes(fill = Prevalence), color = "white", size = 0.2) +  
+  scale_fill_brewer(
+    palette = "YlGnBu",
+    direction = 1,
+    na.value = "turquoise1",
+    name = "Prevalence"
+    ) +
+  scale_color_manual(
+    values = c(
+      "Active" = "red",
+      "Non-active" = "grey23"
+      ),
+    name = "Conflict status"
+    ) +
+  guides(
+    fill = guide_legend(override.aes = list(pattern = "none")),
+    color = guide_legend(override.aes = list(
+      fill = c("white", "white"),
+      pattern = c("crosshatch", "none"),       # Force the stripe pattern into the legend
+      pattern_color = c("grey60", NA),  # Match your map's stripe color
+      pattern_fill = c("grey60", NA),       
+      pattern_density = c(0.05, 0),
+      pattern_spacing = c(0.015, 1)
+    ))
+  ) +
   geom_sf_text(
     aes(
       label = ifelse(
@@ -3168,22 +3238,19 @@ outcomes_gen_map <-
         scales::percent(Prevalence, accuracy = 1)
         )
       ),
-    size = 3,
-    check_overlap = TRUE
+    size = 2.5,
+    colour = "black"
     ) +
-  scale_color_manual(values = c("black", "white"), guide = "none") +
   facet_wrap(~Outcome, ncol = 2) +
-  labs(
-    fill = "Prevalence") +
-  ggpubr::theme_pubr() +
+  theme_void() +
   theme(
+    plot.margin = margin(t = 0, r = 0.3, b = 0, l = 0.3, unit = "cm"),
+    panel.spacing = unit(0.2, "lines"),
     legend.position = "right",
-    legend.text = element_text(size = 10),
-    axis.title = element_blank(), 
-    axis.text = element_blank(),  
-    axis.ticks = element_blank(),
-    axis.line = element_blank(),
-    strip.text = element_text(size = 10, face = "bold"),
+    legend.title = element_text(face = "bold"),
+    strip.text = element_text(size = 10, 
+                              face = "bold", 
+                              margin = margin(b = 2, t = 2)),
   ) 
 
 outcomes_gen_map
@@ -3220,12 +3287,49 @@ exposures_gen_map <-
   mutate(Exposure = factor(Exposure, levels = exposure_order)) |> 
   arrange(Exposure) |> 
   ggplot() +
-  geom_sf(aes(fill = Prevalence), color = "white", size = 0.2) +  
-  scale_fill_gradient(low = "#dae6f2",
-                      high = darkblue,
-                      na.value = "turquoise1",
-                      labels = scales::percent,
-                      limits = c(0, 0.5)) +
+  geom_sf_pattern(
+    aes(
+      fill = prev_bin, 
+      color = conflict_status, 
+      linewidth = I(ifelse(conflict_status == "Active", 0.8, 0.3)),
+      pattern = conflict_status 
+    ),
+    pattern_color = "white",      
+    pattern_fill  = "white",           
+    pattern_alpha = 0.5,          
+    pattern_density = 0.05,       
+    pattern_spacing = 0.015,      
+    pattern_angle = 45            
+  ) +
+  scale_pattern_manual(
+    values = c(
+      "Active" = "crosshatch", 
+      "Non-active" = "none"),
+    name = "Conflict status" 
+  ) +
+  scale_fill_brewer(
+    palette = "YlGnBu", 
+    direction = 1, 
+    na.value = "turquoise1",
+    name = "Prevalence"
+  ) +
+  scale_color_manual(
+    values = c(
+      "Active" = "red", 
+      "Non-active" = "grey60"),
+    name = "Conflict status"
+  ) +
+  guides(
+    fill = guide_legend(override.aes = list(pattern = "none")),
+    color = guide_legend(override.aes = list(
+      fill = c("white", "white"),         
+      pattern = c("crosshatch", "none"),      
+      pattern_color = c("grey60", NA),    
+      pattern_fill = c("grey60", NA),
+      pattern_density = c(0.05, 0),        
+      pattern_spacing = c(0.015, 1)        
+    ))
+  ) +
   geom_sf_text(
     aes(
       label = ifelse(
@@ -3234,23 +3338,18 @@ exposures_gen_map <-
         scales::percent(Prevalence, accuracy = 1)
         )
       ),
-    size = 3,
-    check_overlap = TRUE
+    size = 2.5,
+    colour = "black"
     ) +
-  scale_color_manual(values = c("black", "white"), guide = "none") +
   facet_wrap(~Exposure, ncol = 2) +
-  labs(
-    fill = "Prevalence") +
-  ggpubr::theme_pubr() +
+  theme_void() + 
   theme(
-    legend.position = "right",
-    legend.text = element_text(size = 10),
-    axis.title = element_blank(), 
-    axis.text = element_blank(),  
-    axis.ticks = element_blank(),
-    axis.line = element_blank(),
-    strip.text = element_text(size = 10, face = "bold"),
-  ) 
+    plot.margin = margin(t = 0, r = 0.3, b = 0, l = 0.3, unit = "cm"),
+    panel.spacing = unit(0.2, "lines"),
+    legend.position = "right", 
+    legend.title = element_text(face = "bold"),
+    strip.text = element_text(size = 10, face = "bold", margin = margin(b = 2, t = 2))
+  )
 
 exposures_gen_map
 
@@ -4267,50 +4366,51 @@ pr_assoc_map_grid <-
   ) |> 
   arrange(Exposure) |>
   ggplot() +
-  geom_sf(aes(fill = PR_bin,
-          color = conflict_status,
-          linewidth = conflict_status)) +
+  geom_sf_pattern(
+    aes(
+      fill = PR_bin,
+      colour = conflict_status,
+      linewidth = I(ifelse(conflict_status == "Active", 0.8, 0.3)),
+      pattern = conflict_status
+    ),
+    pattern_color = "grey70",
+    pattern_fill = NA, # keeps inside transparent
+    pattern_alpha = 0.3, 
+    pattern_density = 0.1,
+    pattern_spacing = 0.02, 
+    pattern_angle = 45
+  ) +
+  scale_pattern_manual(
+    values = c(
+      "Active" = "crosshatch",
+      "Non-active" = "none"
+    ),
+    guide = "none"
+  ) +
   scale_fill_brewer(
-    palette = "YlGnBu", 
-    direction = 1, 
+    palette = "YlGnBu",
+    direction = 1,
     na.value = "turquoise1",
     name = "Prevalence\nRatio (PR)"
   ) +
-  # scale_fill_gradient(
-  #   low = "#dae6f2",
-  #   high = darkblue,
-  #   na.value = "turquoise1",
-  #   labels = scales::number_format(accuracy = 0.1),
-  #   name = "Prevalence\nRatio (PR)"
-  #   ) +
   scale_colour_manual(
     values = c(
       "Active" = "red",
       "Non-active" = "grey23")
   ) + 
-  scale_linewidth_manual(
-    values = c(
-      "Active" = 0.9,
-      "Non-active" = 0.2
-    ) 
+  guides(
+    fill = guide_legend(override.aes = list(pattern = "none")),
+    color = guide_legend(override.aes = list(
+      fill = "white",         
+      pattern_alpha = 1, # Makes the pattern fully opaque in the little box
+      pattern_density = 0.5    # Squeezes the lines closer together
+    ))
   ) +
-  # geom_sf_text(
-  #   aes(
-  #     label = ifelse(
-  #       is.na(PR),
-  #       "ND",
-  #       format(round(PR, 1), nsmall = 1))
-  #       ),
-  #   size = 2.5,
-  #   color = "white",
-  #   check_overlap = FALSE
-  #   ) +
   coord_sf(expand = FALSE) + # removes internal padding between map and box
   facet_grid(rows = vars(Exposure),
              cols = vars(Outcome)) +
   labs(color = "Conflict status",
        linewidth = "Conflict status") +
-  # ggpubr::theme_pubr() +
   theme_void() + 
   theme(
     # Set top, right, bottom, and left margins to absolutely zero
@@ -4321,20 +4421,7 @@ pr_assoc_map_grid <-
     legend.title = element_text(face = "bold"),
     strip.text = element_text(size = 11, face = "bold", margin = margin(b = 2, t = 2))
   )
-  # theme(
-  #   plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm"),
-  #   panel.spacing = unit(0.2, "lines"),
-  #   legend.position = "right",
-  #   legend.box.margin = margin(0, 0, 0, 0),
-  #   legend.margin = margin(0, 0, 0, 0),
-  #   legend.text = element_text(size = 10),
-  #   plot.title = element_text(hjust = 0.5),
-  #   axis.title = element_blank(),
-  #   axis.text = element_blank(),
-  #   axis.ticks = element_blank(),
-  #   axis.line = element_blank(),
-  #   strip.text = element_text(size = 10, face = "bold")
-  #   ) 
+
 
 
 pr_assoc_map_grid
