@@ -3175,7 +3175,7 @@ map_info_prev_out <-
 
 map_info_prev_out
 
-  # maps
+# maps
 #outcomes
 
 outcomes_gen_map <-
@@ -3223,11 +3223,12 @@ outcomes_gen_map <-
     fill = guide_legend(override.aes = list(pattern = "none")),
     color = guide_legend(override.aes = list(
       fill = c("white", "white"),
-      pattern = c("crosshatch", "none"),       # Force the stripe pattern into the legend
+      linewidth = c(1.7, 0.3),
+      pattern = c("crosshatch", "none"), # Force the stripe pattern 
       pattern_color = c("grey60", NA),  # Match your map's stripe color
       pattern_fill = c("grey60", NA),       
       pattern_density = c(0.05, 0),
-      pattern_spacing = c(0.015, 1)
+      pattern_spacing = c(0.005, 1)
     ))
   ) +
   geom_sf_text(
@@ -3322,12 +3323,13 @@ exposures_gen_map <-
   guides(
     fill = guide_legend(override.aes = list(pattern = "none")),
     color = guide_legend(override.aes = list(
-      fill = c("white", "white"),         
-      pattern = c("crosshatch", "none"),      
-      pattern_color = c("grey60", NA),    
-      pattern_fill = c("grey60", NA),
-      pattern_density = c(0.05, 0),        
-      pattern_spacing = c(0.015, 1)        
+      fill = c("white", "white"),
+      linewidth = c(1.7, 0.3),
+      pattern = c("crosshatch", "none"),    # Force the stripe pattern 
+      pattern_color = c("grey60", NA),  # Match your map's stripe color
+      pattern_fill = c("grey60", NA),       
+      pattern_density = c(0.05, 0),
+      pattern_spacing = c(0.005, 1)
     ))
   ) +
   geom_sf_text(
@@ -4397,13 +4399,25 @@ pr_assoc_map_grid <-
     values = c(
       "Active" = "red",
       "Non-active" = "grey23")
-  ) + 
+  ) +
+  # guides(
+  #   fill = guide_legend(override.aes = list(pattern = "none")),
+  #   color = guide_legend(override.aes = list(
+  #     fill = "white",         
+  #     pattern_alpha = 1, # Makes the pattern fully opaque in the little box
+  #     pattern_density = 0.5    # Squeezes the lines closer together
+  #   ))
+  # ) +
   guides(
     fill = guide_legend(override.aes = list(pattern = "none")),
     color = guide_legend(override.aes = list(
-      fill = "white",         
-      pattern_alpha = 1, # Makes the pattern fully opaque in the little box
-      pattern_density = 0.5    # Squeezes the lines closer together
+      fill = c("white", "white"),
+      linewidth = c(1.7, 0.3),
+      pattern = c("crosshatch", "none"),  # Force the stripe pattern
+      pattern_color = c("grey60", NA),  # Match your map's stripe color
+      pattern_fill = c("grey60", NA),       
+      pattern_density = c(0.05, 0),
+      pattern_spacing = c(0.005, 1)
     ))
   ) +
   coord_sf(expand = FALSE) + # removes internal padding between map and box
@@ -4448,8 +4462,8 @@ pr_assoc_map_grid
 )
 
 ragg::agg_png("out/plots/pr_asssoc_map.png",
-              width = 160,
-              height = 210,
+              width = 170,
+              height = 180,
               units = "mm",
               res = 600,
               scaling = 0.65)
