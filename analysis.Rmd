@@ -3191,16 +3191,16 @@ outcomes_gen_map <-
       linewidth = I(ifelse(conflict_status == "Active", 0.8, 0.3)),
       pattern = conflict_status
     ),
-    pattern_color = "grey70",
+    pattern_color = "red",
     pattern_fill = "white",
-    pattern_alpha = 0.5,
+    pattern_alpha = 0.3,
     pattern_density = 0.05,
-    pattern_spacing = 0.015, 
+    pattern_spacing = 0.05, 
     pattern_angle = 45
   ) +
   scale_pattern_manual(
     values = c(
-      "Active" = "crosshatch",
+      "Active" = "stripe",
       "Non-active" = "none"
     ),
     guide = "none"
@@ -3224,11 +3224,11 @@ outcomes_gen_map <-
     color = guide_legend(override.aes = list(
       fill = c("white", "white"),
       linewidth = c(1.7, 0.3),
-      pattern = c("crosshatch", "none"), # Force the stripe pattern 
-      pattern_color = c("grey60", NA),  # Match your map's stripe color
-      pattern_fill = c("grey60", NA),       
+      pattern = c("stripe", "none"), # Force the stripe pattern 
+      pattern_color = c("red", NA),  # Match your map's stripe color
+      pattern_fill = c("white", NA),       
       pattern_density = c(0.05, 0),
-      pattern_spacing = c(0.005, 1)
+      pattern_spacing = c(0.009, 1)
     ))
   ) +
   geom_sf_text(
@@ -3295,16 +3295,16 @@ exposures_gen_map <-
       linewidth = I(ifelse(conflict_status == "Active", 0.8, 0.3)),
       pattern = conflict_status 
     ),
-    pattern_color = "white",      
+    pattern_color = "red",      
     pattern_fill  = "white",           
-    pattern_alpha = 0.5,          
+    pattern_alpha = 0.3,          
     pattern_density = 0.05,       
-    pattern_spacing = 0.015,      
+    pattern_spacing = 0.05,      
     pattern_angle = 45            
   ) +
   scale_pattern_manual(
     values = c(
-      "Active" = "crosshatch", 
+      "Active" = "stripe", 
       "Non-active" = "none"),
     name = "Conflict status" 
   ) +
@@ -3325,11 +3325,11 @@ exposures_gen_map <-
     color = guide_legend(override.aes = list(
       fill = c("white", "white"),
       linewidth = c(1.7, 0.3),
-      pattern = c("crosshatch", "none"),    # Force the stripe pattern 
-      pattern_color = c("grey60", NA),  # Match your map's stripe color
-      pattern_fill = c("grey60", NA),       
+      pattern = c("stripe", "none"),    # Force the stripe pattern 
+      pattern_color = c("red", NA),  # Match your map's stripe color
+      pattern_fill = c("white", NA),       
       pattern_density = c(0.05, 0),
-      pattern_spacing = c(0.005, 1)
+      pattern_spacing = c(0.009, 1)
     ))
   ) +
   geom_sf_text(
@@ -4315,7 +4315,7 @@ reg_dep_exp <- readRDS("out/dataframes/region_depression_assoc_prs.rds")
 reg_anx_exp <- readRDS("out/dataframes/region_anxiety_assoc_prs.rds")
 
 
- map_data <- 
+map_data <- 
   reg_dep_exp |>
   bind_rows(reg_anx_exp)
 
@@ -4375,16 +4375,16 @@ pr_assoc_map_grid <-
       linewidth = I(ifelse(conflict_status == "Active", 0.8, 0.3)),
       pattern = conflict_status
     ),
-    pattern_color = "grey70",
+    pattern_color = "red",
     pattern_fill = NA, # keeps inside transparent
     pattern_alpha = 0.3, 
-    pattern_density = 0.1,
-    pattern_spacing = 0.02, 
+    pattern_density = 0.05,
+    pattern_spacing = 0.05, 
     pattern_angle = 45
   ) +
   scale_pattern_manual(
     values = c(
-      "Active" = "crosshatch",
+      "Active" = "stripe",
       "Non-active" = "none"
     ),
     guide = "none"
@@ -4400,24 +4400,16 @@ pr_assoc_map_grid <-
       "Active" = "red",
       "Non-active" = "grey23")
   ) +
-  # guides(
-  #   fill = guide_legend(override.aes = list(pattern = "none")),
-  #   color = guide_legend(override.aes = list(
-  #     fill = "white",         
-  #     pattern_alpha = 1, # Makes the pattern fully opaque in the little box
-  #     pattern_density = 0.5    # Squeezes the lines closer together
-  #   ))
-  # ) +
   guides(
     fill = guide_legend(override.aes = list(pattern = "none")),
     color = guide_legend(override.aes = list(
       fill = c("white", "white"),
       linewidth = c(1.7, 0.3),
-      pattern = c("crosshatch", "none"),  # Force the stripe pattern
-      pattern_color = c("grey60", NA),  # Match your map's stripe color
-      pattern_fill = c("grey60", NA),       
+      pattern = c("stripe", "none"),  # Force the stripe pattern
+      pattern_color = c("red", NA),  # Match your map's stripe color
+      pattern_fill = c("white", NA),       
       pattern_density = c(0.05, 0),
-      pattern_spacing = c(0.005, 1)
+      pattern_spacing = c(0.009, 1)
     ))
   ) +
   coord_sf(expand = FALSE) + # removes internal padding between map and box
@@ -4450,7 +4442,7 @@ pr_assoc_map_grid
   # mutate(across(where(is.numeric), ~round(., 2)))
 
   
-  ggsave(
+ggsave(
   "pr_assoc_map.pdf",
   plot = pr_assoc_map_grid,
   path = "out/plots/",
